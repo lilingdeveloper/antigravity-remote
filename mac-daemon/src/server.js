@@ -4,6 +4,7 @@ const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
 const zlib = require('zlib');
+const child_process = require('child_process');
 const { AntigravityDiscovery } = require('./discovery');
 const { AntigravityRpcClient } = require('./rpc-client');
 const { TailscaleAndTunnelManager } = require('./tailscale-tunnel');
@@ -62,9 +63,20 @@ function sendJson(res, statusCode, data, req = null) {
     'Content-Type': 'application/json; charset=utf-8',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Access-Token',
-    'Cache-Control': 'no-store'
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Access-Token, If-None-Match',
+    'Cache-Control': 'no-cache'
   };
+
+  if (statusCode === 200) {
+    const etag = 'W/"' + crypto.createHash('sha1').update(body).digest('hex').slice(0, 16) + '"';
+    headers['ETag'] = etag;
+
+    if (req && req.method === 'GET' && req.headers && req.headers['if-none-match'] === etag) {
+      res.writeHead(304, headers);
+      res.end();
+      return;
+    }
+  }
 
   const acceptEncoding = String((req && req.headers && req.headers['accept-encoding']) || (req ? '' : 'gzip'));
   if (body.length > 1024 && acceptEncoding.includes('gzip')) {
@@ -467,7 +479,7 @@ const requestHandler = async (req, res) => {
           cloudflareTunnelUrl: net.cloudflareTunnelUrl,
           token: config.accessToken
         }
-      });
+      }, req);
     }
 
     // GET /api/v1/models
@@ -770,6 +782,29 @@ if (require.main === module) {
       console.log(`📱 iPhone Safari 或 Antigravity Remote App 扫码即连 (${pairTargetUrl}):`);
       qrcode.generate(pairTargetUrl, { small: true });
     } catch (_) {}
+
+    // 局域网 Bonjour / mDNS 广播 (_agyremote._tcp)，供 iOS 端自动发现 Mac 守护进程
+    if (process.platform === 'darwin') {
+      try {
+        const serviceName = 'AGY Remote (' + os.hostname() + ')';
+        const bonjourProcess = child_process.spawn(
+          'dns-sd',
+          ['-R', serviceName, '_agyremote._tcp', 'local', String(PORT), 'port=' + PORT],
+          { stdio: 'ignore' }
+        );
+        bonjourProcess.on('error', (err) => {
+          console.warn(`[Bonjour] 局域网广播启动失败: ${err.message}`);
+        });
+        const cleanupBonjour = () => {
+          try { bonjourProcess.kill(); } catch (_) {}
+        };
+        process.on('exit', cleanupBonjour);
+        process.on('SIGINT', cleanupBonjour);
+        process.on('SIGTERM', cleanupBonjour);
+      } catch (err) {
+        console.warn(`[Bonjour] 启动异常: ${err.message}`);
+      }
+    }
   });
 }
 

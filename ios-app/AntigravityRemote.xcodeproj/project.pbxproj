@@ -19,6 +19,7 @@
 		A10000122900000100000001 /* DemoModeData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000122900000100000001 /* DemoModeData.swift */; };
 		A10000132900000100000001 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000132900000100000001 /* LocalizationManager.swift */; };
 		A10000142900000100000001 /* PrivacyAndAboutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000142900000100000001 /* PrivacyAndAboutViews.swift */; };
+		A10000162900000100000001 /* RemoteSheetsAndDiffViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000162900000100000001 /* RemoteSheetsAndDiffViews.swift */; };
 		A10000152900000100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A20000152900000100000001 /* PrivacyInfo.xcprivacy */; };
 		A10000082900000100000001 /* TailnetKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000082900000100000001 /* TailnetKit.xcframework */; };
 		A10000092900000100000001 /* TailnetKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A20000082900000100000001 /* TailnetKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -52,6 +53,7 @@
 		A20000122900000100000001 /* DemoModeData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DemoModeData.swift; sourceTree = "<group>"; };
 		A20000132900000100000001 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/LocalizationManager.swift; sourceTree = "<group>"; };
 		A20000142900000100000001 /* PrivacyAndAboutViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PrivacyAndAboutViews.swift; sourceTree = "<group>"; };
+		A20000162900000100000001 /* RemoteSheetsAndDiffViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/RemoteSheetsAndDiffViews.swift; sourceTree = "<group>"; };
 		A20000152900000100000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		A20000082900000100000001 /* TailnetKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = TailnetKit.xcframework; sourceTree = "<group>"; };
 		A20000092900000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -93,6 +95,7 @@
 				A20000122900000100000001 /* DemoModeData.swift */,
 				A20000132900000100000001 /* LocalizationManager.swift */,
 				A20000142900000100000001 /* PrivacyAndAboutViews.swift */,
+				A20000162900000100000001 /* RemoteSheetsAndDiffViews.swift */,
 				A20000152900000100000001 /* PrivacyInfo.xcprivacy */,
 				A20000112900000100000001 /* Assets.xcassets */,
 			);
@@ -201,6 +204,7 @@
 				A10000122900000100000001 /* DemoModeData.swift in Sources */,
 				A10000132900000100000001 /* LocalizationManager.swift in Sources */,
 				A10000142900000100000001 /* PrivacyAndAboutViews.swift in Sources */,
+				A10000162900000100000001 /* RemoteSheetsAndDiffViews.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

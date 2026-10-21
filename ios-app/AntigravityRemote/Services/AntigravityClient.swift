@@ -18,6 +18,7 @@ import Combine
 import UIKit
 import Network
 import Darwin
+import UserNotifications
 
 public enum RouteChannelKind: String {
     case systemTailscale = "Tailscale 直连"
@@ -145,6 +146,14 @@ public final class AntigravityClient: ObservableObject {
         didSet { UserDefaults.standard.set(queueMessagesWhenBusy, forKey: "agy.queueMessagesWhenBusy") }
     }
 
+    /// 后台任务完成与待审批远程本地通知 (默认开启)
+    @Published public var enableNotifications: Bool = {
+        if UserDefaults.standard.object(forKey: "agy.enableNotifications") == nil { return true }
+        return UserDefaults.standard.bool(forKey: "agy.enableNotifications")
+    }() {
+        didSet { UserDefaults.standard.set(enableNotifications, forKey: "agy.enableNotifications") }
+    }
+
     @Published public private(set) var messages: [ChatMessageItem] = []
     @Published public private(set) var queuedMessages: [QueuedMessageItem] = []
     @Published public private(set) var isGenerating: Bool = false
@@ -170,6 +179,23 @@ public final class AntigravityClient: ObservableObject {
     private var cachedBaseURL: URL?
     private var lastRouteVerifiedAt: Date?
     private var sseConnectedBaseURL: URL?
+
+    // ETag 增量传输与 304 零拷贝缓存
+    private enum HTTPNotModifiedSignal: Error { case notModified }
+    private var etagByPath: [String: String] = [:]
+
+    // SSE 运行态追踪与自适应轮询计数
+    private var isSSEActive: Bool = false
+    private var pollTickCount: Int = 0
+
+    // 局域网 Bonjour 自动发现
+    private var bonjourBrowser: NWBrowser?
+
+    // 通知与后台任务宽限
+    private var lastNotifiedInteractionStepIndex: Int?
+    private var wasGenerating: Bool = false
+    private var bgTaskID: UIBackgroundTaskIdentifier = .invalid
+    private var saveSnapshotTask: Task<Void, Never>?
 
     // 网络接口与链路动态监控
     private let netPathMonitor = NWPathMonitor()
@@ -207,6 +233,205 @@ public final class AntigravityClient: ObservableObject {
         let oldSession = fastSession
         fastSession = Self.makeFastSession()
         oldSession.finishTasksAndInvalidate()
+    }
+
+    // MARK: - 0ms 本地离线快照持久化 (秒开首屏)
+
+    private struct OfflineSnapshot: Codable {
+        let projects: [ProjectGroup]
+        let conversations: [ConversationSummary]
+        let messagesByCascadeId: [String: [ChatMessageItem]]
+        let contextUsageByCascadeId: [String: ContextUsageInfo]
+        let activeModelByCascadeId: [String: String]
+        let lastCascadeId: String
+    }
+
+    private static var offlineSnapshotURL: URL {
+        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let dir = appSupport.appendingPathComponent("AntigravityRemote", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("offline_snapshot_v1.json")
+    }
+
+    private func loadOfflineSnapshot() {
+        guard !isDemoMode else { return }
+        let url = Self.offlineSnapshotURL
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              let snap = try? JSONDecoder().decode(OfflineSnapshot.self, from: data) else {
+            return
+        }
+        if self.projects.isEmpty { self.projects = snap.projects }
+        if self.conversations.isEmpty { self.conversations = snap.conversations }
+        for (k, v) in snap.messagesByCascadeId {
+            if self.conversationMessagesCache[k] == nil {
+                self.conversationMessagesCache[k] = v
+            }
+        }
+        for (k, v) in snap.contextUsageByCascadeId {
+            if self.conversationContextUsageCache[k] == nil {
+                self.conversationContextUsageCache[k] = v
+            }
+        }
+        for (k, v) in snap.activeModelByCascadeId {
+            if self.conversationActiveModelCache[k] == nil {
+                self.conversationActiveModelCache[k] = v
+            }
+        }
+        if self.currentCascadeId.isEmpty && !snap.lastCascadeId.isEmpty {
+            self.currentCascadeId = snap.lastCascadeId
+        }
+        if !self.currentCascadeId.isEmpty && self.messages.isEmpty {
+            self.messages = self.conversationMessagesCache[self.currentCascadeId] ?? []
+            self.contextUsage = self.conversationContextUsageCache[self.currentCascadeId]
+            if let cachedModel = self.conversationActiveModelCache[self.currentCascadeId] {
+                self.activeConversationModelId = cachedModel
+                if self.selectedModelId.isEmpty { self.selectedModelId = cachedModel }
+            }
+        }
+    }
+
+    private func scheduleSaveOfflineSnapshot() {
+        guard !isDemoMode else { return }
+        saveSnapshotTask?.cancel()
+        saveSnapshotTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self, !Task.isCancelled else { return }
+            self.saveOfflineSnapshotNow()
+        }
+    }
+
+    private func saveOfflineSnapshotNow() {
+        guard !isDemoMode else { return }
+        let recentIds = Array(conversations.prefix(5).map(\.id))
+        var recentMessages: [String: [ChatMessageItem]] = [:]
+        var recentContext: [String: ContextUsageInfo] = [:]
+        for id in recentIds {
+            if let msgs = conversationMessagesCache[id] {
+                recentMessages[id] = msgs
+            }
+            if let cu = conversationContextUsageCache[id] {
+                recentContext[id] = cu
+            }
+        }
+        if !currentCascadeId.isEmpty {
+            recentMessages[currentCascadeId] = messages
+            if let cu = contextUsage { recentContext[currentCascadeId] = cu }
+        }
+
+        let snap = OfflineSnapshot(
+            projects: self.projects,
+            conversations: self.conversations,
+            messagesByCascadeId: recentMessages,
+            contextUsageByCascadeId: recentContext,
+            activeModelByCascadeId: self.conversationActiveModelCache,
+            lastCascadeId: self.currentCascadeId
+        )
+
+        let targetURL = Self.offlineSnapshotURL
+        Task.detached(priority: .utility) {
+            if let data = try? JSONEncoder().encode(snap) {
+                try? data.write(to: targetURL, options: .atomic)
+            }
+        }
+    }
+
+    // MARK: - 局域网 Bonjour / mDNS 自动发现 (_agyremote._tcp)
+
+    private func startBonjourBrowser() {
+        guard bonjourBrowser == nil else { return }
+        let params = NWParameters()
+        params.includePeerToPeer = true
+        let browser = NWBrowser(for: .bonjour(type: "_agyremote._tcp", domain: "local."), using: params)
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            Task { @MainActor in
+                self?.handleBonjourResults(results)
+            }
+        }
+        browser.start(queue: DispatchQueue(label: "app.antigravity.bonjour", qos: .utility))
+        bonjourBrowser = browser
+    }
+
+    private func handleBonjourResults(_ results: Set<NWBrowser.Result>) {
+        guard !isDemoMode else { return }
+        for res in results {
+            guard case .service(_, _, _, _) = res.endpoint else { continue }
+            let conn = NWConnection(to: res.endpoint, using: .tcp)
+            conn.stateUpdateHandler = { [weak self, weak conn] state in
+                guard let self, let conn else { return }
+                if case .ready = state {
+                    if case .hostPort(let host, let port) = conn.currentPath?.remoteEndpoint {
+                        conn.cancel()
+                        let hostStr: String
+                        switch host {
+                        case .ipv4(let ip):
+                            hostStr = "\(ip)"
+                        default:
+                            hostStr = ""
+                        }
+                        if !hostStr.isEmpty && !hostStr.hasPrefix("127.") {
+                            Task { @MainActor in
+                                await self.evaluateBonjourDiscoveredHost(hostStr, port: Int(port.rawValue))
+                            }
+                        }
+                    }
+                }
+            }
+            conn.start(queue: DispatchQueue(label: "app.antigravity.bonjour.resolve", qos: .utility))
+        }
+    }
+
+    private func evaluateBonjourDiscoveredHost(_ ip: String, port: Int) async {
+        guard !ip.isEmpty, !isDemoMode else { return }
+        if fallbackLanHost.isEmpty || (!isConnected && fallbackLanHost != ip) {
+            guard let pingURL = URL(string: "http://\(ip):\(port)/api/v1/ping") else { return }
+            var req = URLRequest(url: pingURL)
+            req.timeoutInterval = 1.0
+            req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            if let (data, resp) = try? await fastSession.data(for: req),
+               let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
+               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               (json["ok"] as? Bool) == true {
+                print("[AntigravityClient] Bonjour 自动发现局域网 Mac: \(ip):\(port)")
+                self.fallbackLanHost = ip
+                UserDefaults.standard.set(ip, forKey: "agy.fallbackLanHost")
+                if !self.isConnected {
+                    await self.reprobeAndSwitchRouteIfNeeded(force: true)
+                }
+            }
+        }
+    }
+
+    // MARK: - 本地通知与后台保活
+
+    private func setupNotifications() {
+        guard enableNotifications else { return }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+
+    private func sendLocalNotification(title: String, body: String, identifier: String) {
+        guard enableNotifications else { return }
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 0.1, repeats: false)
+        let req = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
+        UNUserNotificationCenter.current().add(req)
+    }
+
+    private func endCurrentBackgroundTask() {
+        guard bgTaskID != .invalid else { return }
+        let tid = bgTaskID
+        bgTaskID = .invalid
+        UIApplication.shared.endBackgroundTask(tid)
+        pollTask?.cancel()
+        pollTask = nil
+        sseTask?.cancel()
+        sseTask = nil
+        sseConnectedCascadeId = ""
+        sseConnectedBaseURL = nil
+        isSSEActive = false
     }
 
     nonisolated private static func localInterfaceSnapshot() -> String {
@@ -249,7 +474,10 @@ public final class AntigravityClient: ObservableObject {
     private var backgroundObserver: NSObjectProtocol?
 
     public init() {
+        setupNotifications()
+        loadOfflineSnapshot()
         startNetworkPathMonitor()
+        startBonjourBrowser()
         startPollingLoop()
 
         // 检测 App Store 自动化测试与营销截图启动参数
@@ -334,6 +562,7 @@ public final class AntigravityClient: ObservableObject {
     private func reconnectSSEIfActive() {
         guard !currentCascadeId.isEmpty, !isDemoMode else { return }
         let cid = currentCascadeId
+        isSSEActive = false
         sseTask?.cancel()
         sseTask = nil
         sseConnectedCascadeId = ""
@@ -342,15 +571,23 @@ public final class AntigravityClient: ObservableObject {
     }
 
     private func handleDidEnterBackground() {
-        pollTask?.cancel()
-        pollTask = nil
-        sseTask?.cancel()
-        sseTask = nil
-        sseConnectedCascadeId = ""
-        sseConnectedBaseURL = nil
+        if isGenerating {
+            // 申请最多 28 秒后台宽限执行时间，确保收到 AI 回复完成或待审批本地通知
+            bgTaskID = UIApplication.shared.beginBackgroundTask(withName: "AGYGeneratingGrace") { [weak self] in
+                Task { @MainActor in
+                    self?.endCurrentBackgroundTask()
+                }
+            }
+        } else {
+            endCurrentBackgroundTask()
+        }
     }
 
     private func handleWillEnterForeground() {
+        if bgTaskID != .invalid {
+            UIApplication.shared.endBackgroundTask(bgTaskID)
+            bgTaskID = .invalid
+        }
         invalidateRouteCache()
         rebuildFastSession()
         startPollingLoop()
@@ -382,6 +619,7 @@ public final class AntigravityClient: ObservableObject {
     public func invalidateRouteCache() {
         cachedBaseURL = nil
         lastRouteVerifiedAt = nil
+        etagByPath.removeAll()
     }
 
     /// 扫码一键配对解析器
@@ -738,6 +976,9 @@ public final class AntigravityClient: ObservableObject {
         if !accessToken.isEmpty {
             req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         }
+        if method == "GET", let etag = etagByPath[path] {
+            req.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
         if let body {
             req.httpBody = try JSONSerialization.data(withJSONObject: body)
         }
@@ -746,15 +987,30 @@ public final class AntigravityClient: ObservableObject {
         do {
             let (data, resp) = try await fastSession.data(for: req)
             let rtt = max(1, Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000))
-            if let httpResp = resp as? HTTPURLResponse, !(200...299).contains(httpResp.statusCode) {
-                let errText = String(data: data, encoding: .utf8) ?? "HTTP \(httpResp.statusCode)"
-                throw NSError(domain: "AntigravityClient", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: errText])
+            if let httpResp = resp as? HTTPURLResponse {
+                if httpResp.statusCode == 304 {
+                    latencyMs = rtt
+                    lastRouteVerifiedAt = Date()
+                    connectionRouteDescription = "\(routeKind.rawValue) · \(rtt)ms"
+                    throw HTTPNotModifiedSignal.notModified
+                }
+                if (200...299).contains(httpResp.statusCode) {
+                    if let etag = httpResp.value(forHTTPHeaderField: "ETag") {
+                        etagByPath[path] = etag
+                    }
+                } else {
+                    let errText = String(data: data, encoding: .utf8) ?? "HTTP \(httpResp.statusCode)"
+                    throw NSError(domain: "AntigravityClient", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: errText])
+                }
             }
             latencyMs = rtt
             lastRouteVerifiedAt = Date()
             connectionRouteDescription = "\(routeKind.rawValue) · \(rtt)ms"
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
+            if error is HTTPNotModifiedSignal {
+                throw error
+            }
             // 若当前缓存路由失效 (例如从 Wi-Fi 切换到 5G 或 Tailscale 切换)，立即强制重选最优路由并无感重试一次
             if retryOnFailure {
                 invalidateRouteCache()
@@ -763,9 +1019,14 @@ public final class AntigravityClient: ObservableObject {
                 guard let retryURL = URL(string: path, relativeTo: newBase) else { throw error }
                 req.url = retryURL
                 let (data, resp) = try await fastSession.data(for: req)
-                if let httpResp = resp as? HTTPURLResponse, !(200...299).contains(httpResp.statusCode) {
-                    let errText = String(data: data, encoding: .utf8) ?? "HTTP \(httpResp.statusCode)"
-                    throw NSError(domain: "AntigravityClient", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: errText])
+                if let httpResp = resp as? HTTPURLResponse {
+                    if httpResp.statusCode == 304 {
+                        throw HTTPNotModifiedSignal.notModified
+                    }
+                    if !(200...299).contains(httpResp.statusCode) {
+                        let errText = String(data: data, encoding: .utf8) ?? "HTTP \(httpResp.statusCode)"
+                        throw NSError(domain: "AntigravityClient", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: errText])
+                    }
                 }
                 return try JSONDecoder().decode(T.self, from: data)
             }
@@ -839,6 +1100,10 @@ public final class AntigravityClient: ObservableObject {
                     UserDefaults.standard.set(macTs, forKey: "agy.serverHost")
                 }
             }
+        } catch HTTPNotModifiedSignal.notModified {
+            isConnected = true
+            isReconnecting = false
+            lastError = nil
         } catch {
             isReconnecting = true
             isConnected = false
@@ -870,8 +1135,14 @@ public final class AntigravityClient: ObservableObject {
 
     public func fetchConversations() async {
         if isDemoMode { return }
-        guard let res: ConversationsListResponse = try? await request(path: "/api/v1/conversations") else { return }
-        await applyConversationsList(projects: res.projects ?? [], conversations: res.conversations ?? [])
+        do {
+            let res: ConversationsListResponse = try await request(path: "/api/v1/conversations")
+            await applyConversationsList(projects: res.projects ?? [], conversations: res.conversations ?? [])
+        } catch HTTPNotModifiedSignal.notModified {
+            // 304 未修改，直接跳过
+        } catch {
+            // 网络异常处理
+        }
     }
 
     private func applyConversationsList(projects newProjects: [ProjectGroup], conversations newConvos: [ConversationSummary]) async {
@@ -900,6 +1171,8 @@ public final class AntigravityClient: ObservableObject {
                 return
             }
         }
+
+        scheduleSaveOfflineSnapshot()
     }
 
     /// 在最近使用的对话列表中快速前后切换 (direction: -1 为上一个，+1 为下一个)
@@ -938,7 +1211,11 @@ public final class AntigravityClient: ObservableObject {
             queuedMessages.removeAll()
             isGenerating = convo.isRunning ?? false
             pendingInteraction = nil
-            messages = conversationMessagesCache[convo.id] ?? []
+            let cached = conversationMessagesCache[convo.id] ?? []
+            messages = cached
+            if cached.isEmpty {
+                etagByPath.removeValue(forKey: "/api/v1/conversations/\(convo.id)")
+            }
             contextUsage = conversationContextUsageCache[convo.id]
         }
         UserDefaults.standard.set(currentCascadeId, forKey: "agy.currentCascadeId")
@@ -954,6 +1231,8 @@ public final class AntigravityClient: ObservableObject {
         do {
             let detail: ConversationDetailResponse = try await request(path: "/api/v1/conversations/\(cascadeId)")
             await applyConversationDetail(detail, cascadeId: cascadeId)
+        } catch HTTPNotModifiedSignal.notModified {
+            // 304 未修改，0ms 无额外反序列化开销
         } catch {
             lastError = error.localizedDescription
         }
@@ -1054,6 +1333,39 @@ public final class AntigravityClient: ObservableObject {
         } else if detail.pendingInteraction == nil {
             lastPendingStepIndex = nil
         }
+
+        // 场景 A: 待审批远程本地提醒
+        if let pending = detail.pendingInteraction, pending.stepIndex != lastNotifiedInteractionStepIndex {
+            lastNotifiedInteractionStepIndex = pending.stepIndex
+            if UIApplication.shared.applicationState != .active {
+                sendLocalNotification(
+                    title: "⚡ 需要您的远程审批",
+                    body: pending.summary ?? pending.commandLine ?? "AI 正在等待您批准操作",
+                    identifier: "pending-\(pending.stepIndex)"
+                )
+            }
+        } else if detail.pendingInteraction == nil {
+            lastNotifiedInteractionStepIndex = nil
+        }
+
+        // 场景 B: AI 完成回复提醒
+        if wasGenerating && !gen {
+            if UIApplication.shared.applicationState != .active {
+                let lastAssistant = serverMsgs.last(where: { $0.role == "assistant" })?.text ?? "任务已完成"
+                let snippet = String(lastAssistant.trimmingCharacters(in: .whitespacesAndNewlines).prefix(80))
+                sendLocalNotification(
+                    title: "✅ AI 已完成回复",
+                    body: snippet.isEmpty ? "AI 已成功完成本次任务生成" : snippet,
+                    identifier: "completed-\(Date().timeIntervalSince1970)"
+                )
+            }
+            if UIApplication.shared.applicationState == .background, bgTaskID != .invalid {
+                endCurrentBackgroundTask()
+            }
+        }
+        wasGenerating = gen
+
+        scheduleSaveOfflineSnapshot()
     }
 
     public func fetchDiffsAndArtifacts(cascadeId: String) async {
@@ -1539,10 +1851,12 @@ public final class AntigravityClient: ObservableObject {
 
                     let (bytes, resp) = try await URLSession.shared.bytes(for: req)
                     guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+                        self.isSSEActive = false
                         try? await Task.sleep(for: .seconds(2))
                         continue
                     }
 
+                    self.isSSEActive = true
                     var currentEvent = ""
                     for try await line in bytes.lines {
                         if Task.isCancelled { break }
@@ -1566,6 +1880,7 @@ public final class AntigravityClient: ObservableObject {
                         }
                     }
                 } catch {
+                    self.isSSEActive = false
                     if Task.isCancelled { break }
                     try? await Task.sleep(for: .seconds(2))
                 }
@@ -1624,6 +1939,7 @@ public final class AntigravityClient: ObservableObject {
         diffs.removeAll()
         artifacts.removeAll()
         currentCascadeId = ""
+        etagByPath.removeAll()
         Task {
             await refreshAll()
         }
@@ -1718,10 +2034,14 @@ public final class AntigravityClient: ObservableObject {
                     await self?.probeLanUpgradeIfNeeded()
                 }
 
-                await self.fetchStatus()
-                await self.fetchConversations()
-                if !self.currentCascadeId.isEmpty {
-                    await self.fetchConversationDetail(cascadeId: self.currentCascadeId)
+                self.pollTickCount += 1
+                let needsHighFrequency = !self.isConnected || self.isGenerating || !self.isSSEActive
+                if needsHighFrequency || (self.pollTickCount % 5 == 0) {
+                    await self.fetchStatus()
+                    await self.fetchConversations()
+                    if !self.currentCascadeId.isEmpty {
+                        await self.fetchConversationDetail(cascadeId: self.currentCascadeId)
+                    }
                 }
             }
         }
