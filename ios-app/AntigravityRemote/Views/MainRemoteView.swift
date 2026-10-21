@@ -2217,48 +2217,6 @@ public struct MainRemoteView: View {
             }
 
             Section {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    if client.isDemoMode {
-                        client.exitDemoMode()
-                    } else {
-                        client.enterDemoMode()
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: client.isDemoMode ? "xmark.circle.fill" : "gamecontroller.fill")
-                            .foregroundStyle(client.isDemoMode ? .red : .green)
-                        Text(client.isDemoMode ? L("退出演示") : L("进入交互式演示模式 (Demo Mode)"))
-                            .foregroundStyle(client.isDemoMode ? .red : .primary)
-                        Spacer()
-                        if client.isDemoMode {
-                            Text("Active")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.green)
-                        }
-                    }
-                }
-
-                if client.isDemoMode {
-                    Button {
-                        client.triggerDemoApproval()
-                    } label: {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                            Text(L("触发审批演示"))
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                }
-            } header: {
-                Text("交互演示模式 (Demo Mode)")
-            } footer: {
-                Text("供 App Store 审核员体验或离线测试全部界面与交互流程，无需实际连接 Mac 电脑。")
-                    .font(.caption2)
-            }
-
-            Section {
                 Toggle(isOn: $client.showThinkingProcess) {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
