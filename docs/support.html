@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AGY Remote — 技术支持与使用指南 / Support</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #2563eb;
+      --border: #e2e8f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f19;
+        --card: #111827;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #60a5fa;
+        --border: #1e293b;
+      }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 32px 16px 64px;
+      line-height: 1.68;
+    }
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 32px 28px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+    }
+    h1 { font-size: 1.75rem; margin-top: 0; }
+    h2 { font-size: 1.2rem; margin-top: 1.8rem; color: var(--accent); }
+    pre {
+      background: rgba(15, 23, 42, 0.06);
+      padding: 12px 14px;
+      border-radius: 10px;
+      overflow-x: auto;
+      font-size: 0.86rem;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>AGY Remote 技术支持 / Technical Support</h1>
+    <p>欢迎使用 <strong>AGY Remote</strong>（专为 iPhone 与 iPad 打造的移动开发远程辅助与工作区管理客户端）。</p>
+
+    <h2>1. 免连接演示模式（Built-in Demo Mode）</h2>
+    <p>如果您手边暂时没有运行守护服务的 Mac 电脑，打开 App 后直接点击首页横幅或设置页中的<strong>「🎮 体验交互演示模式（Demo Mode）」</strong>按钮，即可在手机上离线体验多项目切换、AI 思考流展示、远程命令审批（Approve / Reject）、代码差异对比（Diffs）与方案文档（Artifacts）预览。</p>
+
+    <h2>2. 2 步极简连接您的 Mac（Quick Setup）</h2>
+    <ol>
+      <li>在您的 Mac 终端运行一行自动配置命令（自动配置后台开机自启服务并弹出配对二维码）：
+        <pre><code>curl -fsSL https://raw.githubusercontent.com/lilingdeveloper/antigravity-remote/main/install.sh | bash</code></pre>
+      </li>
+      <li>在 iPhone / iPad 上打开 AGY Remote，点击「扫码一键配对连接」扫描电脑弹出的二维码即可秒连。</li>
+    </ol>
+
+    <h2>3. 联系方式与问题反馈（Contact & Feedback）</h2>
+    <ul>
+      <li>GitHub Issues (问题反馈与技术支持): <a href="https://github.com/lilingdeveloper/antigravity-remote/issues">https://github.com/lilingdeveloper/antigravity-remote/issues</a></li>
+      <li>隐私政策 / Privacy Policy: <a href="./privacy.html">查看隐私政策 / View Privacy Policy</a></li>
+    </ul>
+  </div>
+</body>
+</html>

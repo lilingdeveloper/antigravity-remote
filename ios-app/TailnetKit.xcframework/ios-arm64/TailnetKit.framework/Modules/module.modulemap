@@ -1,0 +1,8 @@
+framework module "TailnetKit" {
+	header "ref.h"
+    header "Tailnetkit.objc.h"
+    header "Universe.objc.h"
+    header "TailnetKit.h"
+
+    export *
+}

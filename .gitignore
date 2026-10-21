@@ -1,0 +1,43 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Logs & Runtime State
+*.log
+mac-daemon/daemon.log
+daemon.log
+
+# Xcode / Apple Development
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+project.xcworkspace/xcuserdata/
+*.xcuserdata/
+*.xcbkptlist
+*.moved-aside
+
+# TailnetKit xcframework: Ignore slices over GitHub's 100MB limit
+# (Only iOS arm64 device & simulator slices are needed for Antigravity Remote iOS)
+ios-app/TailnetKit.xcframework/macos-arm64_x86_64/
+ios-app/TailnetKit.xcframework/ios-arm64_x86_64-maccatalyst/
+
+# Node / Package managers
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editors & IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# Generated App Store Screenshots
+Scripts/appstore-ads/raw/
+Scripts/appstore-ads/out/

@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AGY Remote — 隐私政策 / Privacy Policy</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #4f46e5;
+      --border: #e2e8f0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0b0f19;
+        --card: #111827;
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --accent: #818cf8;
+        --border: #1e293b;
+      }
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 32px 16px 64px;
+      line-height: 1.68;
+    }
+    .container {
+      max-width: 820px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 32px 28px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+    }
+    h1 { font-size: 1.75rem; margin-top: 0; }
+    h2 { font-size: 1.2rem; margin-top: 1.8rem; color: var(--accent); }
+    p, li { color: var(--text); font-size: 0.96rem; }
+    .meta { color: var(--muted); font-size: 0.88rem; margin-bottom: 24px; }
+    .divider { border: none; border-top: 1px solid var(--border); margin: 36px 0; }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: rgba(79, 70, 229, 0.12);
+      color: var(--accent);
+      margin-bottom: 10px;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <span class="badge">AGY Remote · Zero Data Collection</span>
+    <h1>AGY Remote 隐私政策 / Privacy Policy</h1>
+    <div class="meta">生效日期 / Effective Date: 2026-10-21 · 开源主页 / GitHub: <a href="https://github.com/lilingdeveloper/antigravity-remote">antigravity-remote</a></div>
+
+    <h2>1. 核心承诺：零数据收集（Zero Data Collection）</h2>
+    <p><strong>AGY Remote</strong> 是一款点对点（Peer-to-Peer）远程开发辅助控制客户端。我们高度重视您的隐私与代码安全：</p>
+    <ul>
+      <li><strong>不收集任何个人身份信息</strong>：本应用无需注册账号，不收集姓名、手机号、邮箱、位置或设备标识符。</li>
+      <li><strong>不上传或中转任何代码与对话</strong>：您的所有 AI 对话内容、源代码变更（Diffs）、方案文档（Artifacts）及指令仅在您的 iOS/iPadOS 设备与您本人的 Mac 电脑之间通过局域网（LAN）或您私有的 Tailscale 虚拟局域网（Tailnet）直接传输，绝不经过开发者或任何第三方服务器。</li>
+      <li><strong>无广告与无第三方追踪 SDK</strong>：应用内不包含任何广告组件、第三方分析 SDK 或跨应用追踪代码（<code>NSPrivacyTracking = false</code>）。</li>
+    </ul>
+
+    <h2>2. 本地数据存储与系统权限说明</h2>
+    <ul>
+      <li><strong>本地配置存储（UserDefaults）</strong>：您填写的电脑端 IP 地址、端口号、访问令牌（Access Token）及界面显示偏好仅保存在您设备本地沙盒中，卸载应用即彻底清除。</li>
+      <li><strong>相机权限（NSCameraUsageDescription）</strong>：仅在您主动点击「扫码一键配对」时用于识别电脑端生成的连接二维码，不会拍摄、保存或上传任何照片与视频。</li>
+      <li><strong>相册权限（NSPhotoLibraryUsageDescription）</strong>：仅在您主动从相册挑选图片或视频作为附件发送给您本人的电脑端工作区时使用，应用不会在后台读取您的相册。</li>
+      <li><strong>本地网络权限（NSLocalNetworkUsageDescription）</strong>：用于在局域网或 Tailscale 虚拟网段中直连您本人的 Mac 桥接守护进程。</li>
+    </ul>
+
+    <h2>3. 联系我们</h2>
+    <p>如您对本隐私政策有任何疑问，请通过以下方式联系我们：<br/>
+      开源仓库与问题反馈：<a href="https://github.com/lilingdeveloper/antigravity-remote/issues">https://github.com/lilingdeveloper/antigravity-remote/issues</a>
+    </p>
+
+    <hr class="divider" />
+
+    <h1>Privacy Policy (English)</h1>
+    <h2>1. Zero Data Collection & Direct Peer-to-Peer Architecture</h2>
+    <p><strong>AGY Remote</strong> is a direct peer-to-peer remote companion app for controlling your own Mac development workspace from iPhone or iPad. Your privacy and source code security are our top priorities:</p>
+    <ul>
+      <li><strong>No Personal Data Collected</strong>: AGY Remote requires no user registration and collects zero personal data, analytics, identifiers, or telemetry.</li>
+      <li><strong>Direct Local / Tailnet Communication Only</strong>: All AI prompts, streaming responses, file diffs, and artifacts are transmitted directly between your iOS/iPadOS device and your own Mac over your local network (LAN) or your private Tailscale mesh network (Tailnet). No data ever passes through any developer-owned or third-party servers.</li>
+      <li><strong>Zero Tracking & Zero Ads</strong>: The app contains no advertising SDKs, no third-party analytics frameworks, and performs no tracking across apps or websites (<code>NSPrivacyTracking = false</code>).</li>
+    </ul>
+
+    <h2>2. On-Device Storage & Permissions</h2>
+    <ul>
+      <li><strong>On-Device Preferences (UserDefaults)</strong>: Your connection host IP, port, access token, and UI display preferences are stored strictly locally on your device. Uninstalling the app permanently removes all local data.</li>
+      <li><strong>Camera Access</strong>: Used solely when you initiate QR code scanning to pair with your Mac. Camera frames are processed on-device in real time and are never stored or transmitted.</li>
+      <li><strong>Photo Library Access</strong>: Used solely when you explicitly select photos or videos via the system picker to send as attachments to your own Mac workspace.</li>
+      <li><strong>Local Network Access</strong>: Used strictly to establish direct HTTP/SSE connections with the bridge service running on your own Mac.</li>
+    </ul>
+
+    <h2>3. Contact Us</h2>
+    <p>If you have any questions regarding this Privacy Policy, please contact us via:<br/>
+      GitHub Issues & Support: <a href="https://github.com/lilingdeveloper/antigravity-remote/issues">https://github.com/lilingdeveloper/antigravity-remote/issues</a>
+    </p>
+  </div>
+</body>
+</html>

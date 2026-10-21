@@ -1,0 +1,323 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A10000012900000100000001 /* AntigravityRemoteApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000012900000100000001 /* AntigravityRemoteApp.swift */; };
+		A10000022900000100000001 /* MainRemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000022900000100000001 /* MainRemoteView.swift */; };
+		A10000032900000100000001 /* AntigravityClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000032900000100000001 /* AntigravityClient.swift */; };
+		A10000042900000100000001 /* AntigravityModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000042900000100000001 /* AntigravityModels.swift */; };
+		A10000052900000100000001 /* TailscaleService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000052900000100000001 /* TailscaleService.swift */; };
+		A10000062900000100000001 /* TailnetManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000062900000100000001 /* TailnetManager.swift */; };
+		A10000072900000100000001 /* TailnetEngineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000072900000100000001 /* TailnetEngineView.swift */; };
+		A10000102900000100000001 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000102900000100000001 /* QRScannerView.swift */; };
+		A10000112900000100000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A20000112900000100000001 /* Assets.xcassets */; };
+		A10000122900000100000001 /* DemoModeData.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000122900000100000001 /* DemoModeData.swift */; };
+		A10000132900000100000001 /* LocalizationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000132900000100000001 /* LocalizationManager.swift */; };
+		A10000142900000100000001 /* PrivacyAndAboutViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000142900000100000001 /* PrivacyAndAboutViews.swift */; };
+		A10000152900000100000001 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A20000152900000100000001 /* PrivacyInfo.xcprivacy */; };
+		A10000082900000100000001 /* TailnetKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A20000082900000100000001 /* TailnetKit.xcframework */; };
+		A10000092900000100000001 /* TailnetKit.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A20000082900000100000001 /* TailnetKit.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A30000012900000100000001 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				A10000092900000100000001 /* TailnetKit.xcframework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		A20000002900000100000001 /* AntigravityRemote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AntigravityRemote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A20000012900000100000001 /* AntigravityRemoteApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AntigravityRemoteApp.swift; sourceTree = "<group>"; };
+		A20000022900000100000001 /* MainRemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/MainRemoteView.swift; sourceTree = "<group>"; };
+		A20000032900000100000001 /* AntigravityClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/AntigravityClient.swift; sourceTree = "<group>"; };
+		A20000042900000100000001 /* AntigravityModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AntigravityModels.swift; sourceTree = "<group>"; };
+		A20000052900000100000001 /* TailscaleService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tailnet/TailscaleService.swift; sourceTree = "<group>"; };
+		A20000062900000100000001 /* TailnetManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tailnet/TailnetManager.swift; sourceTree = "<group>"; };
+		A20000072900000100000001 /* TailnetEngineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tailnet/TailnetEngineView.swift; sourceTree = "<group>"; };
+		A20000102900000100000001 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/QRScannerView.swift; sourceTree = "<group>"; };
+		A20000112900000100000001 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A20000122900000100000001 /* DemoModeData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/DemoModeData.swift; sourceTree = "<group>"; };
+		A20000132900000100000001 /* LocalizationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/LocalizationManager.swift; sourceTree = "<group>"; };
+		A20000142900000100000001 /* PrivacyAndAboutViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/PrivacyAndAboutViews.swift; sourceTree = "<group>"; };
+		A20000152900000100000001 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		A20000082900000100000001 /* TailnetKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = TailnetKit.xcframework; sourceTree = "<group>"; };
+		A20000092900000100000001 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		A40000012900000100000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000082900000100000001 /* TailnetKit.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A50000012900000100000001 = {
+			isa = PBXGroup;
+			children = (
+				A20000082900000100000001 /* TailnetKit.xcframework */,
+				A50000022900000100000001 /* AntigravityRemote */,
+				A50000032900000100000001 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A50000022900000100000001 /* AntigravityRemote */ = {
+			isa = PBXGroup;
+			children = (
+				A20000092900000100000001 /* Info.plist */,
+				A20000012900000100000001 /* AntigravityRemoteApp.swift */,
+				A20000022900000100000001 /* MainRemoteView.swift */,
+				A20000032900000100000001 /* AntigravityClient.swift */,
+				A20000042900000100000001 /* AntigravityModels.swift */,
+				A20000052900000100000001 /* TailscaleService.swift */,
+				A20000062900000100000001 /* TailnetManager.swift */,
+				A20000072900000100000001 /* TailnetEngineView.swift */,
+				A20000102900000100000001 /* QRScannerView.swift */,
+				A20000122900000100000001 /* DemoModeData.swift */,
+				A20000132900000100000001 /* LocalizationManager.swift */,
+				A20000142900000100000001 /* PrivacyAndAboutViews.swift */,
+				A20000152900000100000001 /* PrivacyInfo.xcprivacy */,
+				A20000112900000100000001 /* Assets.xcassets */,
+			);
+			path = AntigravityRemote;
+			sourceTree = "<group>";
+		};
+		A50000032900000100000001 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A20000002900000100000001 /* AntigravityRemote.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		A60000012900000100000001 /* AntigravityRemote */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70000022900000100000001 /* Build configuration list for PBXNativeTarget "AntigravityRemote" */;
+			buildPhases = (
+				A80000012900000100000001 /* Sources */,
+				A40000012900000100000001 /* Frameworks */,
+				AB0000012900000100000001 /* Resources */,
+				A30000012900000100000001 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = AntigravityRemote;
+			productName = AntigravityRemote;
+			productReference = A20000002900000100000001 /* AntigravityRemote.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A90000012900000100000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					A60000012900000100000001 = {
+						CreatedOnToolsVersion = 16.0;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = A70000012900000100000001 /* Build configuration list for PBXProject "AntigravityRemote" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				"zh-Hans",
+				"zh-Hant",
+				ja,
+				ko,
+				fr,
+				de,
+				es,
+				ru,
+				pt,
+				it,
+				ar,
+				Base,
+			);
+			mainGroup = A50000012900000100000001;
+			productRefGroup = A50000032900000100000001 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A60000012900000100000001 /* AntigravityRemote */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AB0000012900000100000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000112900000100000001 /* Assets.xcassets in Resources */,
+				A10000152900000100000001 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		A80000012900000100000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A10000012900000100000001 /* AntigravityRemoteApp.swift in Sources */,
+				A10000022900000100000001 /* MainRemoteView.swift in Sources */,
+				A10000032900000100000001 /* AntigravityClient.swift in Sources */,
+				A10000042900000100000001 /* AntigravityModels.swift in Sources */,
+				A10000052900000100000001 /* TailscaleService.swift in Sources */,
+				A10000062900000100000001 /* TailnetManager.swift in Sources */,
+				A10000072900000100000001 /* TailnetEngineView.swift in Sources */,
+				A10000102900000100000001 /* QRScannerView.swift in Sources */,
+				A10000122900000100000001 /* DemoModeData.swift in Sources */,
+				A10000132900000100000001 /* LocalizationManager.swift in Sources */,
+				A10000142900000100000001 /* PrivacyAndAboutViews.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000012900000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		AA0000022900000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA0000032900000100000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = AntigravityRemote/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liling.AntigravityRemote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000042900000100000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 3;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = AntigravityRemote/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.liling.AntigravityRemote;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		A70000012900000100000001 /* Build configuration list for PBXProject "AntigravityRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000012900000100000001 /* Debug */,
+				AA0000022900000100000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70000022900000100000001 /* Build configuration list for PBXNativeTarget "AntigravityRemote" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000032900000100000001 /* Debug */,
+				AA0000042900000100000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A90000012900000100000001 /* Project object */;
+}

@@ -1,0 +1,14 @@
+{
+  "name": "antigravity-remote-daemon",
+  "version": "1.0.0",
+  "description": "Native Connect-RPC & WebSocket Remote Control Daemon for Google Antigravity (iOS App + PWA)",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node test/verify-rpc.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}
