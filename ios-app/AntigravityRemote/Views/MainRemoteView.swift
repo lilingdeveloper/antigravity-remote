@@ -1902,8 +1902,9 @@ public struct MainRemoteView: View {
                 .focused($isInputFocused)
                 .lineLimit(1...5)
                 .padding(.horizontal, 13)
-                .padding(.vertical, 9)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .padding(.vertical, 8)
+                .frame(minHeight: 38)
+                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
 
                 Button {
                     let text = inputText
@@ -1913,19 +1914,18 @@ public struct MainRemoteView: View {
                     isInputFocused = false
                     Task { await client.sendMessage(text: text, attachments: attachments) }
                 } label: {
-                    if isQueueModeActive {
-                        Image(systemName: "clock.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(canSend ? Color.white : Color.secondary)
-                            .frame(width: 32, height: 32)
-                            .background(canSend ? Color.orange : Color.gray.opacity(0.25), in: Circle())
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 33, weight: .semibold))
-                            .foregroundStyle(canSend ? Color.blue : Color.gray.opacity(0.45))
-                            .frame(width: 34, height: 34)
-                    }
+                    Image(systemName: isQueueModeActive ? "clock.fill" : "arrow.up")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(canSend ? Color.white : Color.secondary.opacity(0.55))
+                        .frame(width: 38, height: 38)
+                        .background(
+                            canSend
+                                ? (isQueueModeActive ? Color.orange : Color.blue)
+                                : Color(uiColor: .secondarySystemBackground),
+                            in: Circle()
+                        )
                 }
+                .buttonStyle(.plain)
                 .disabled(!canSend)
             }
             .padding(.horizontal, 12)
@@ -2201,12 +2201,12 @@ public struct MainRemoteView: View {
     private var settingsPane: some View {
         Form {
             Section {
-                Picker(L("界面语言 / Language"), selection: $l10n.currentLanguage) {
-                    ForEach(AppLanguage.allCases) { lang in
-                        Text(lang.displayName).tag(lang)
-                    }
+                NavigationLink {
+                    LanguagePickerView(l10n: l10n)
+                } label: {
+                    Text(l10n.currentLanguage.displayName)
+                        .foregroundStyle(.primary)
                 }
-                .pickerStyle(.navigationLink)
                 .onChange(of: l10n.currentLanguage) { _ in
                     if client.isDemoMode {
                         client.enterDemoMode(scene: client.activeMarketingScene)
@@ -2352,7 +2352,7 @@ public struct MainRemoteView: View {
                             .frame(width: 34, height: 34)
                             .background(Color.blue, in: RoundedRectangle(cornerRadius: 8))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("扫码一键配对连接 (/qr)")
+                            Text(L("扫码一键配对连接"))
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                             Text("扫描 Mac 端二维码，自动配置 Tailscale 与局域网双通道")
@@ -2485,6 +2485,45 @@ public struct MainRemoteView: View {
                     .font(.caption2)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)
+            }
+        }
+    }
+}
+
+// MARK: - 独立语言选择二级子页面
+private struct LanguagePickerView: View {
+    @ObservedObject var l10n: LocalizationManager
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        List {
+            ForEach(AppLanguage.allCases) { lang in
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    l10n.currentLanguage = lang
+                    dismiss()
+                } label: {
+                    HStack {
+                        Text(lang.displayName)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if l10n.currentLanguage == lang {
+                            Image(systemName: "checkmark")
+                                .fontWeight(.semibold)
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .navigationTitle(L("界面语言 / Language"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(L("界面语言 / Language"))
+                    .font(.headline)
             }
         }
     }

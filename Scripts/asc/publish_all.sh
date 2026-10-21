@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 IPA_PATH="$ROOT_DIR/build/AntigravityRemote.ipa"
 ASC_DIR="$ROOT_DIR/Scripts/asc"
 VERSION="1.0.0"
-BUILD_NUM="8"
+BUILD_NUM="9"
 
 echo "=== [1/6] Verifying App Record in App Store Connect (com.liling.AntigravityRemote) ==="
 python3 "$ASC_DIR/asc.py" GET "/v1/apps?filter[bundleId]=com.liling.AntigravityRemote"
