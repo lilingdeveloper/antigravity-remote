@@ -255,18 +255,70 @@ public final class LocalizationManager: ObservableObject {
         ],
 
         // 首次向导横幅与 Tailscale 横幅
-        "📖 首次使用？点击查看「2 步极简连接 Mac 教程」": [
-            "zh-Hant": "📖 首次使用？點擊查看「2 步極簡連線 Mac 教學」",
-            "en": "📖 First time? Tap for '2-Step Mac Setup Guide'",
-            "ja": "📖 初めてですか？「2ステップMac接続ガイド」はこちら",
-            "ko": "📖 처음이신가요? '2단계 초간편 Mac 연결 가이드' 보기",
-            "fr": "📖 Première utilisation ? 'Guide de connexion Mac en 2 étapes'",
-            "de": "📖 Neu hier? Tippen für die '2-Schritte Mac-Anleitung'",
-            "es": "📖 ¿Primera vez? Ver 'Guía de 2 pasos para conectar Mac'",
-            "ru": "📖 Впервые? Нажмите для 'Руководства по подключению Mac в 2 шага'",
-            "pt": "📖 Primeira vez? Toque para o 'Guia de Conexão Mac em 2 Etapas'",
-            "it": "📖 Prima volta? Tocca per 'Guida in 2 passaggi per connettere il Mac'",
-            "ar": "📖 أول مرة؟ اضغط لعرض 'دليل الاتصال بجهاز Mac في خطوتين'"
+        "首次使用？点击查看「2 步极简连接 Mac 教程」": [
+            "zh-Hant": "首次使用？點擊查看「2 步極簡連線 Mac 教學」",
+            "en": "First time? Tap for '2-Step Mac Setup Guide'",
+            "ja": "初めてですか？「2ステップMac接続ガイド」はこちら",
+            "ko": "처음이신가요? '2단계 초간편 Mac 연결 가이드' 보기",
+            "fr": "Première utilisation ? 'Guide de connexion Mac en 2 étapes'",
+            "de": "Neu hier? Tippen für die '2-Schritte Mac-Anleitung'",
+            "es": "¿Primera vez? Ver 'Guía de 2 pasos para conectar Mac'",
+            "ru": "Впервые? Нажмите для 'Руководства по подключению Mac в 2 шага'",
+            "pt": "Primeira vez? Toque para o 'Guia de Conexão Mac em 2 Etapas'",
+            "it": "Prima volta? Tocca per 'Guida in 2 passaggi per connettere il Mac'",
+            "ar": "أول مرة؟ اضغط لعرض 'دليل الاتصال بجهاز Mac في خطوتين'"
+        ],
+        "2 步极简连接 Mac": [
+            "zh-Hant": "2 步極簡連線 Mac",
+            "en": "2-Step Easy Mac Connect",
+            "ja": "2ステップ簡単Mac接続",
+            "ko": "2단계 초간편 Mac 연결",
+            "fr": "Connexion Mac facile en 2 étapes",
+            "de": "2-Schritte Mac-Verbindung",
+            "es": "Conexión fácil a Mac en 2 pasos",
+            "ru": "Подключение к Mac в 2 шага",
+            "pt": "Conexão fácil ao Mac em 2 etapas",
+            "it": "Connessione facile al Mac in 2 passaggi",
+            "ar": "اتصال سهل بجهاز Mac في خطوتين"
+        ],
+        "一键复制 Mac 安装命令": [
+            "zh-Hant": "一鍵複製 Mac 安裝指令",
+            "en": "Copy Mac Install Command",
+            "ja": "Macインストールコマンドをコピー",
+            "ko": "Mac 설치 명령어 복사",
+            "fr": "Copier la commande d'installation Mac",
+            "de": "Mac-Installationsbefehl kopieren",
+            "es": "Copiar comando de instalación de Mac",
+            "ru": "Скопировать команду установки для Mac",
+            "pt": "Copiar comando de instalação do Mac",
+            "it": "Copia comando di installazione per Mac",
+            "ar": "نسخ أمر تثبيت Mac"
+        ],
+        "打开相机扫描 Mac 二维码": [
+            "zh-Hant": "開啟相機掃描 Mac QR Code",
+            "en": "Scan Mac QR Code with Camera",
+            "ja": "カメラでMacのQRコードをスキャン",
+            "ko": "카메라로 Mac QR 코드 스캔",
+            "fr": "Scanner le QR code Mac avec l'appareil photo",
+            "de": "Mac-QR-Code mit Kamera scannen",
+            "es": "Escanear código QR de Mac con la cámara",
+            "ru": "Сканировать QR-код Mac камерой",
+            "pt": "Escanear código QR do Mac com a câmera",
+            "it": "Scansiona il codice QR del Mac con la fotocamera",
+            "ar": "امسح رمز QR الخاص بـ Mac بالكاميرا"
+        ],
+        "查看详细图文步骤": [
+            "zh-Hant": "查看詳細圖文步驟",
+            "en": "View Detailed Guide",
+            "ja": "詳細ガイドを見る",
+            "ko": "상세 가이드 보기",
+            "fr": "Voir le guide détaillé",
+            "de": "Detaillierte Anleitung ansehen",
+            "es": "Ver guía detallada",
+            "ru": "Посмотреть подробное руководство",
+            "pt": "Ver guia detalhado",
+            "it": "Visualizza guida dettagliata",
+            "ar": "عرض الدليل التفصيلي"
         ],
         "内置 Tailscale 尚未登录账号 (异地/5G 穿透需登录一次)": [
             "zh-Hant": "內建 Tailscale 尚未登入帳號 (異地/5G 穿透需登入一次)",

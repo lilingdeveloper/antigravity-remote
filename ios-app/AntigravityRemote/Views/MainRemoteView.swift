@@ -47,6 +47,9 @@ public struct MainRemoteView: View {
     @State private var sidebarDragOffset: CGFloat = 0
     @State private var isChatAtBottom: Bool = true
     @State private var expandedToolIds: Set<String> = []
+    @State private var expandedDiffIds: Set<String> = []
+    @State private var expandedArtifactIds: Set<String> = []
+    @State private var copiedInstallCmd: Bool = false
     @FocusState private var isInputFocused: Bool
 
     public init() {
@@ -595,7 +598,7 @@ public struct MainRemoteView: View {
                 }
             }
 
-            if !client.isConnected {
+            if !client.isConnected && !visibleMessages.isEmpty {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     client.enterDemoMode()
@@ -631,10 +634,10 @@ public struct MainRemoteView: View {
                     showMacSetupGuideSheet = true
                 } label: {
                     HStack(spacing: 6) {
-                        Image(systemName: "book.pages.fill")
+                        Image(systemName: "laptopcomputer.and.iphone")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundStyle(.blue)
-                        Text(L("📖 首次使用？点击查看「2 步极简连接 Mac 教程」"))
+                        Text(L("首次使用？点击查看「2 步极简连接 Mac 教程」"))
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -1051,6 +1054,111 @@ public struct MainRemoteView: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 if !client.isConnected {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "laptopcomputer.and.iphone")
+                                .font(.title3.weight(.bold))
+                                .foregroundStyle(.blue)
+                            Text(L("2 步极简连接 Mac"))
+                                .font(.headline.weight(.bold))
+                            Spacer()
+                        }
+
+                        // 第 1 步
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Text("1")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(Color.blue, in: Circle())
+                                Text(L("在 Mac 终端执行一键安装配置命令"))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                            }
+
+                            Text("curl -fsSL https://raw.githubusercontent.com/lilingdeveloper/antigravity-remote/main/install.sh | bash")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                                .padding(10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+
+                            Button {
+                                UIPasteboard.general.string = "curl -fsSL https://raw.githubusercontent.com/lilingdeveloper/antigravity-remote/main/install.sh | bash"
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                copiedInstallCmd = true
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                    copiedInstallCmd = false
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: copiedInstallCmd ? "checkmark.circle.fill" : "doc.on.doc.fill")
+                                    Text(copiedInstallCmd ? L("已复制到剪贴板") : L("一键复制 Mac 安装命令"))
+                                }
+                                .font(.subheadline.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 9)
+                                .background(copiedInstallCmd ? Color.green.opacity(0.15) : Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 8))
+                                .foregroundStyle(copiedInstallCmd ? .green : .blue)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Divider()
+
+                        // 第 2 步
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 6) {
+                                Text("2")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(Color.blue, in: Circle())
+                                Text(L("扫描 Mac 终端或浏览器配对二维码"))
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                            }
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                showQRScannerSheet = true
+                            } label: {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "qrcode.viewfinder")
+                                        .font(.headline)
+                                    Text(L("打开相机扫描 Mac 二维码"))
+                                        .font(.subheadline.weight(.semibold))
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 10))
+                                .foregroundStyle(.white)
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showMacSetupGuideSheet = true
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "info.circle")
+                                    Text(L("查看详细图文步骤"))
+                                }
+                                .font(.caption.weight(.medium))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 4)
+                                .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(14)
+                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.bottom, 6)
+
                     Button {
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         client.enterDemoMode()
@@ -1074,47 +1182,48 @@ public struct MainRemoteView: View {
                         )
                         .foregroundStyle(.white)
                     }
+                    .buttonStyle(.plain)
                     .padding(.horizontal, 4)
                     .padding(.bottom, 6)
-                }
+                } else {
+                    Text(L("快捷远程指令"))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 4)
 
-                Text(L("快捷远程指令"))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 4)
-
-                ForEach([
-                    ("sparkles", "/plan 规划新功能方案", "先生成结构化实施计划，待手机审批后再改代码"),
-                    ("bolt.fill", "/boost 深度优化当前项目", "多视角分析并改进架构、性能与 UI 细节"),
-                    ("magnifyingglass", "总结当前项目的结构与最近修改", "快速了解电脑端当前工作区的最新进展"),
-                    ("wrench.and.screwdriver.fill", "检查并修复当前项目的编译或运行报错", "自动运行构建测试并修复问题")
-                ], id: \.1) { icon, cmd, desc in
-                    Button {
-                        Task { await client.sendMessage(text: cmd) }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: icon)
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.blue)
-                                .frame(width: 34, height: 34)
-                                .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(cmd)
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text(desc)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
+                    ForEach([
+                        ("sparkles", "/plan 规划新功能方案", "先生成结构化实施计划，待手机审批后再改代码"),
+                        ("bolt.fill", "/boost 深度优化当前项目", "多视角分析并改进架构、性能与 UI 细节"),
+                        ("magnifyingglass", "总结当前项目的结构与最近修改", "快速了解电脑端当前工作区的最新进展"),
+                        ("wrench.and.screwdriver.fill", "检查并修复当前项目的编译或运行报错", "自动运行构建测试并修复问题")
+                    ], id: \.1) { icon, cmd, desc in
+                        Button {
+                            Task { await client.sendMessage(text: cmd) }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: icon)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.blue)
+                                    .frame(width: 34, height: 34)
+                                    .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(cmd)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text(desc)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
                             }
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
+                            .padding(12)
+                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
                         }
-                        .padding(12)
-                        .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -1981,28 +2090,64 @@ public struct MainRemoteView: View {
                 .padding(.vertical, 40)
             } else {
                 ForEach(client.diffs) { diff in
+                    let isExpanded = expandedDiffIds.contains(diff.id)
                     Section {
-                        HStack {
-                            Text(diff.filePath)
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                            Spacer()
-                            Button(L("复制全文")) {
-                                UIPasteboard.general.string = diff.modifiedContent ?? ""
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                if isExpanded {
+                                    expandedDiffIds.remove(diff.id)
+                                } else {
+                                    expandedDiffIds.insert(diff.id)
+                                }
                             }
-                            .font(.caption2.weight(.semibold))
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "doc.text.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.blue)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(diff.fileName)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    if !diff.filePath.isEmpty {
+                                        Text(diff.filePath)
+                                            .font(.caption2.monospaced())
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Spacer()
+                                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
                         }
-                        ScrollView(.horizontal) {
-                            Text((diff.modifiedContent ?? "").prefix(8000))
-                                .font(.system(size: 11.5, design: .monospaced))
-                                .textSelection(.enabled)
-                                .padding(.vertical, 4)
+                        .buttonStyle(.plain)
+
+                        if isExpanded {
+                            HStack {
+                                Text(L("修改后文件内容"))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button(L("复制全文")) {
+                                    UIPasteboard.general.string = diff.modifiedContent ?? ""
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                                .font(.caption2.weight(.semibold))
+                            }
+                            .padding(.top, 4)
+
+                            ScrollView(.horizontal) {
+                                Text((diff.modifiedContent ?? "").prefix(8000))
+                                    .font(.system(size: 11.5, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .padding(.vertical, 4)
+                            }
                         }
-                    } header: {
-                        Label(diff.fileName, systemImage: "doc.text.fill")
-                            .font(.subheadline.weight(.semibold))
                     }
                 }
             }
@@ -2026,35 +2171,76 @@ public struct MainRemoteView: View {
                 .padding(.vertical, 40)
             } else {
                 ForEach(client.artifacts) { art in
+                    let isExpanded = expandedArtifactIds.contains(art.id)
                     Section {
-                        if art.name.lowercased().contains("plan"),
-                           let pending = client.pendingInteraction,
-                           pending.kind == "artifact_approval" {
-                            Button {
-                                Task { await client.respondToInteraction(pending, allow: true) }
-                            } label: {
-                                Label(L("批准方案并继续 (Proceed)"), systemImage: "checkmark.seal.fill")
-                                    .font(.callout.weight(.semibold))
-                                    .frame(maxWidth: .infinity)
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.22)) {
+                                if isExpanded {
+                                    expandedArtifactIds.remove(art.id)
+                                } else {
+                                    expandedArtifactIds.insert(art.id)
+                                }
                             }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
-                        }
-
-                        Text(art.content ?? "（二进制或媒体文件）")
-                            .font(.system(size: 12.5, design: .monospaced))
-                            .textSelection(.enabled)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "doc.richtext.fill")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(.indigo)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(art.name)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    if let path = art.filePath, !path.isEmpty {
+                                        Text(path)
+                                            .font(.caption2.monospaced())
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                Spacer()
+                                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                            }
                             .padding(.vertical, 4)
-                    } header: {
-                        HStack {
-                            Label(art.name, systemImage: "doc.richtext.fill")
-                                .font(.subheadline.weight(.semibold))
-                            Spacer()
-                            Button(L("复制")) {
-                                UIPasteboard.general.string = art.content ?? ""
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if isExpanded {
+                            if art.name.lowercased().contains("plan"),
+                               let pending = client.pendingInteraction,
+                               pending.kind == "artifact_approval" {
+                                Button {
+                                    Task { await client.respondToInteraction(pending, allow: true) }
+                                } label: {
+                                    Label(L("批准方案并继续 (Proceed)"), systemImage: "checkmark.seal.fill")
+                                        .font(.callout.weight(.semibold))
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .tint(.green)
+                                .padding(.vertical, 4)
                             }
-                            .font(.caption2)
+
+                            HStack {
+                                Text(L("文档内容"))
+                                    .font(.caption2.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button(L("复制")) {
+                                    UIPasteboard.general.string = art.content ?? ""
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                                .font(.caption2.weight(.semibold))
+                            }
+                            .padding(.top, 4)
+
+                            Text(art.content ?? "（二进制或媒体文件）")
+                                .font(.system(size: 12.5, design: .monospaced))
+                                .textSelection(.enabled)
+                                .padding(.vertical, 4)
                         }
                     }
                 }
@@ -2209,46 +2395,10 @@ public struct MainRemoteView: View {
             }
 
             Section {
-                Toggle(isOn: $client.queueMessagesWhenBusy) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("发送多条消息自动排队")
-                                .font(.body)
-                            Text("当 AI 正在思考或回复时，新发送的多条消息自动进入队列依次执行，绝不相互重叠打断")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "clock.badge.checkmark.fill")
-                            .foregroundStyle(.blue)
-                    }
-                }
-
-                Toggle(isOn: Binding(
-                    get: { client.autoFollowMacConversation },
-                    set: { val in
-                        client.autoFollowMacConversation = val
-                        UserDefaults.standard.set(val, forKey: "agy.autoFollowMac")
-                    }
-                )) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("自动跟随电脑端新建对话")
-                                .font(.body)
-                            Text("仅当电脑端新建全新对话时自动切换；后台思考中的对话仅在顶部提示，绝不强制切回")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "arrow.triangle.2.circlepath.circle.fill")
-                            .foregroundStyle(.blue)
-                    }
-                }
-
                 Toggle(isOn: $client.enableNotifications) {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("后台完成与审批通知")
+                            Text(L("后台完成与审批通知"))
                                 .font(.body)
                             Text("当离开 App 时，AI 思考结束或需要操作审批时发送系统通知")
                                 .font(.caption2)
@@ -2260,7 +2410,7 @@ public struct MainRemoteView: View {
                     }
                 }
             } header: {
-                Text("消息队列与多端协同")
+                Text("系统通知与提醒")
             }
 
             Section {
@@ -2319,13 +2469,13 @@ public struct MainRemoteView: View {
                     showMacSetupGuideSheet = true
                 } label: {
                     HStack(spacing: 12) {
-                        Image(systemName: "book.pages.fill")
+                        Image(systemName: "laptopcomputer.and.iphone")
                             .font(.title3)
                             .foregroundStyle(.white)
                             .frame(width: 34, height: 34)
                             .background(Color.indigo, in: RoundedRectangle(cornerRadius: 8))
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("📖 2 步极简连接 Mac 教程（含一键开机自启命令）")
+                            Text(L("2 步极简连接 Mac 教程（含一键开机自启命令）"))
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                             Text("无需安装 Node.js，一行命令自动配置 Mac 开机自启服务")
@@ -2436,19 +2586,6 @@ public struct MainRemoteView: View {
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Link(destination: URL(string: "https://lilingdeveloper.github.io/antigravity-remote/privacy.html")!) {
-                    HStack {
-                        Image(systemName: "safari.fill")
-                            .foregroundStyle(.blue)
-                        Text("在线隐私政策 (Web Privacy Policy)")
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Image(systemName: "arrow.up.right")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

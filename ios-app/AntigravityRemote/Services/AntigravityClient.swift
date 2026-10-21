@@ -96,7 +96,9 @@ public final class AntigravityClient: ObservableObject {
     @Published public var autoFollowMacConversation: Bool = {
         if UserDefaults.standard.object(forKey: "agy.autoFollowMac") == nil { return true }
         return UserDefaults.standard.bool(forKey: "agy.autoFollowMac")
-    }()
+    }() {
+        didSet { UserDefaults.standard.set(autoFollowMacConversation, forKey: "agy.autoFollowMac") }
+    }
 
     /// 是否在对话流中显示 AI 思考过程 (默认开启)
     @Published public var showThinkingProcess: Bool = {

@@ -434,14 +434,7 @@ struct ConnectionSettingsSheet: View {
                     }
                 }
 
-                Section("实时同步与系统通知") {
-                    Toggle("自动切换到电脑端新建/新活跃的对话", isOn: Binding(
-                        get: { client.autoFollowMacConversation },
-                        set: { val in
-                            client.autoFollowMacConversation = val
-                            UserDefaults.standard.set(val, forKey: "agy.autoFollowMac")
-                        }
-                    ))
+                Section("系统通知与提醒") {
                     Toggle(L("后台完成与审批通知"), isOn: $client.enableNotifications)
                 }
 
