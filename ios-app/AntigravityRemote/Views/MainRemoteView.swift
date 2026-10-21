@@ -1111,7 +1111,7 @@ public struct MainRemoteView: View {
                         HStack(spacing: 8) {
                             Image(systemName: "gamecontroller.fill")
                                 .font(.headline)
-                            Text(L("🎮 体验交互演示模式（无需连接 Mac）"))
+                            Text(L("体验交互演示模式（无需连接 Mac）"))
                                 .font(.subheadline.weight(.bold))
                         }
                         .padding(.horizontal, 16)
@@ -2444,38 +2444,6 @@ public struct MainRemoteView: View {
                 }
             } header: {
                 Text("扫码配对、Tailscale 组网与连接设置")
-            }
-
-            Section {
-                LabeledContent("当前连接状态", value: client.isConnected ? "✅ 在线 (\(client.connectionRouteDescription))" : "⚠️ 未连接")
-                LabeledContent("Tailscale 主地址") {
-                    TextField("100.x.y.z", text: $client.serverHost)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .multilineTextAlignment(.trailing)
-                }
-                LabeledContent("局域网极速备用") {
-                    TextField("192.168.x.y (可选)", text: $client.fallbackLanHost)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .multilineTextAlignment(.trailing)
-                }
-                LabeledContent("端口") {
-                    TextField("8789", value: $client.serverPort, format: .number)
-                        .keyboardType(.numberPad)
-                        .multilineTextAlignment(.trailing)
-                }
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    client.saveConnectionConfig()
-                    Task { await client.refreshAll() }
-                } label: {
-                    Text(L("保存地址并立即重连"))
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
-            } header: {
-                Text(L("Mac 桥接服务器参数"))
             }
 
             Section {

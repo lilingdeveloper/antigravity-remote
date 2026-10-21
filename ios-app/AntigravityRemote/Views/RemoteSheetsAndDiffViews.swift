@@ -337,56 +337,9 @@ struct ConnectionSettingsSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("🌐 内置 Tailscale 节点与一键配对") {
-                    Button {
-                        onOpenTailscaleLogin()
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "person.badge.key.fill")
-                                .font(.title3)
-                                .foregroundStyle(.white)
-                                .frame(width: 34, height: 34)
-                                .background(tailnet.status?.isRunning == true ? Color.green : Color.indigo, in: RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(tailnet.status?.isRunning == true ? "内置 Tailscale 已登录 (\(tailnet.status?.selfIP ?? ""))" : "🔑 点击登录内置 Tailscale 账号")
-                                    .font(.subheadline.weight(.bold))
-                                    .foregroundStyle(.primary)
-                                Text(tailnet.status?.isRunning == true ? "点击查看组网设备列表或切换账号" : "首次使用点击此处，在应用内一键授权登录您的 Tailscale")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Image(systemName: "chevron.right")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                    }
-
-                    Button {
-                        showScanner = true
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "qrcode.viewfinder")
-                                .font(.title3)
-                                .foregroundStyle(.white)
-                                .frame(width: 34, height: 34)
-                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 8))
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("扫码一键建立 Tailscale / 局域网连接")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text("扫描 Mac 端 /qr 二维码，自动配置多路竞速通道")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-
-                Section("Mac 桥接服务地址 (支持双通道自动竞速)") {
-                    LabeledContent("主地址 (Tailscale)") {
+                Section(L("Mac 桥接服务器参数")) {
+                    LabeledContent("当前连接状态", value: client.isConnected ? "✅ 在线 (\(client.connectionRouteDescription))" : "⚠️ 未连接")
+                    LabeledContent("Tailscale 主地址") {
                         TextField("100.x.y.z", text: $client.serverHost)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -398,15 +351,22 @@ struct ConnectionSettingsSheet: View {
                             .autocorrectionDisabled()
                             .multilineTextAlignment(.trailing)
                     }
-                    HStack {
-                        Text("端口")
-                        Spacer()
+                    LabeledContent("端口") {
                         TextField("8789", value: $client.serverPort, format: .number)
                             .keyboardType(.numberPad)
                             .multilineTextAlignment(.trailing)
                     }
                     SecureField("访问令牌 Token (可选)", text: $client.accessToken)
                         .textInputAutocapitalization(.never)
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        client.saveConnectionConfig()
+                        Task { await client.refreshAll() }
+                    } label: {
+                        Text(L("保存地址并立即重连"))
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity, alignment: .center)
+                    }
                 }
 
                 Section("快捷切换首选通道") {
@@ -432,10 +392,6 @@ struct ConnectionSettingsSheet: View {
                         client.saveConnectionConfig()
                         Task { await client.refreshAll() }
                     }
-                }
-
-                Section("系统通知与提醒") {
-                    Toggle(L("后台完成与审批通知"), isOn: $client.enableNotifications)
                 }
 
                 Section("当前路由与 Tailscale 互斥状态") {
