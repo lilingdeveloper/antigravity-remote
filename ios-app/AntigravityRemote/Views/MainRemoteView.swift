@@ -90,7 +90,10 @@ public struct MainRemoteView: View {
                                     Label(L("设置"), systemImage: "gearshape.fill")
                                 }
                         }
+                        .hideTopScrollEdgeEffect()
                     }
+                    .hideTopScrollEdgeEffect()
+                    .background(TopScrollEdgeDisabler(selectedTab: selectedTab))
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .topBarLeading) {
@@ -672,17 +675,25 @@ public struct MainRemoteView: View {
     }
 
     private var currentModelLabel: String {
-        if !client.selectedModelId.isEmpty {
-            if let found = client.models.first(where: { $0.modelId == client.selectedModelId }) {
+        let raw: String = {
+            if !client.selectedModelId.isEmpty {
+                if let found = client.models.first(where: { $0.modelId == client.selectedModelId }) {
+                    return found.label
+                }
+                return client.selectedModelId
+            }
+            if !client.activeConversationModelId.isEmpty,
+               let found = client.models.first(where: { $0.modelId == client.activeConversationModelId }) {
                 return found.label
             }
-            return client.selectedModelId
+            return L("模型")
+        }()
+
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty || trimmed.localizedCaseInsensitiveContains("placeholder") || trimmed == "选择模型" {
+            return L("模型")
         }
-        if !client.activeConversationModelId.isEmpty,
-           let found = client.models.first(where: { $0.modelId == client.activeConversationModelId }) {
-            return found.label
-        }
-        return "选择模型"
+        return trimmed
     }
 
     private var modelPickerPill: some View {
@@ -802,6 +813,7 @@ public struct MainRemoteView: View {
                         }
                         .background(ChatScrollObserver(isAtBottom: $isChatAtBottom))
                     }
+                    .hideTopScrollEdgeEffect()
                     .scrollDismissesKeyboard(.interactively)
                     .refreshable {
                         await client.refreshAll()
@@ -929,6 +941,9 @@ public struct MainRemoteView: View {
                 var current: UIView? = view
                 while let parent = current?.superview {
                     if let sv = parent as? UIScrollView {
+                        if #available(iOS 26.0, *) {
+                            sv.topEdgeEffect.isHidden = true
+                        }
                         if self.observedScrollView !== sv {
                             self.observedScrollView = sv
                             sv.scrollsToTop = false
@@ -2097,6 +2112,8 @@ public struct MainRemoteView: View {
                 }
             }
         }
+        .hideTopScrollEdgeEffect()
+        .background(TopScrollEdgeDisabler(selectedTab: selectedTab))
         .refreshable {
             await client.fetchDiffsAndArtifacts(cascadeId: client.currentCascadeId)
         }
@@ -2191,6 +2208,8 @@ public struct MainRemoteView: View {
                 }
             }
         }
+        .hideTopScrollEdgeEffect()
+        .background(TopScrollEdgeDisabler(selectedTab: selectedTab))
         .refreshable {
             await client.fetchDiffsAndArtifacts(cascadeId: client.currentCascadeId)
         }
@@ -2318,6 +2337,32 @@ public struct MainRemoteView: View {
 
             Section {
                 Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showMacSetupGuideSheet = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "laptopcomputer.and.iphone")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(Color.indigo, in: RoundedRectangle(cornerRadius: 8))
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(L("2 步极简连接 Mac 教程（含一键开机自启命令）"))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text("无需安装 Node.js，一行命令自动配置 Mac 开机自启服务")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 2)
+                }
+
+                Button {
                     triggerDirectTailscaleLogin()
                 } label: {
                     HStack(spacing: 12) {
@@ -2356,32 +2401,6 @@ public struct MainRemoteView: View {
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
                             Text("扫描 Mac 端二维码，自动配置 Tailscale 与局域网双通道")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
-                }
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showMacSetupGuideSheet = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "laptopcomputer.and.iphone")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(Color.indigo, in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("2 步极简连接 Mac 教程（含一键开机自启命令）"))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("无需安装 Node.js，一行命令自动配置 Mac 开机自启服务")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
@@ -2453,7 +2472,7 @@ public struct MainRemoteView: View {
                     HStack {
                         Image(systemName: "hand.raised.shield.fill")
                             .foregroundStyle(.green)
-                        Text(L("隐私政策 (Privacy Policy)"))
+                        Text(L("隐私政策"))
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: "chevron.right")
@@ -2466,9 +2485,7 @@ public struct MainRemoteView: View {
                     showOpenSourceLicensesSheet = true
                 } label: {
                     HStack {
-                        Image(systemName: "doc.plaintext.fill")
-                            .foregroundStyle(.indigo)
-                        Text(L("开源组件许可 (Open Source Licenses)"))
+                        Text(L("开源组件许可"))
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: "chevron.right")
@@ -2479,13 +2496,63 @@ public struct MainRemoteView: View {
 
                 LabeledContent("版本号", value: "1.0.0 (Build 3)")
             } header: {
-                Text(L("隐私声明与关于"))
+                Text(L("隐私声明"))
             } footer: {
-                Text("Antigravity Remote · 专为移动端打造的 Google Antigravity 远程控制系统")
+                Text("\(L("如有任何问题，请联系邮箱")) \("liling" + ".developer@gmail.com")")
                     .font(.caption2)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)
             }
+        }
+        .hideTopScrollEdgeEffect()
+        .background(TopScrollEdgeDisabler(selectedTab: selectedTab))
+    }
+}
+
+// MARK: - 隐藏 iOS 26 顶部滚动边缘模糊矩形 (UIScrollEdgeEffect)
+private struct TopScrollEdgeDisabler: UIViewRepresentable {
+    let selectedTab: Int
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView(frame: .zero)
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+        scheduleDisable(from: view)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        scheduleDisable(from: uiView)
+    }
+
+    private func scheduleDisable(from view: UIView) {
+        for delay in [0.0, 0.04, 0.15] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard let root = view.window ?? view.superview else { return }
+                Self.disableTopEdgeEffectRecursively(in: root)
+            }
+        }
+    }
+
+    private static func disableTopEdgeEffectRecursively(in view: UIView) {
+        if let sv = view as? UIScrollView {
+            if #available(iOS 26.0, *) {
+                sv.topEdgeEffect.isHidden = true
+            }
+        }
+        for sub in view.subviews {
+            disableTopEdgeEffectRecursively(in: sub)
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func hideTopScrollEdgeEffect() -> some View {
+        if #available(iOS 26.0, *) {
+            self.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            self
         }
     }
 }

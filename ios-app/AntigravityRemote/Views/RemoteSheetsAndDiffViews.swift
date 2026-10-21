@@ -418,11 +418,16 @@ struct ConnectionSettingsSheet: View {
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("保存并重连") {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         client.saveConnectionConfig()
                         Task { await client.refreshAll() }
                         dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .bold))
                     }
+                    .accessibilityLabel(L("保存并重连"))
                 }
             }
         }
@@ -461,7 +466,8 @@ struct ModelPickerSheet: View {
     }
 
     private var activeMacModelName: String {
-        if let found = client.models.first(where: { $0.modelId == client.activeConversationModelId }) {
+        if let found = client.models.first(where: { $0.modelId == client.activeConversationModelId }),
+           !found.label.localizedCaseInsensitiveContains("placeholder") {
             return found.label
         }
         return "自动继承当前会话模型"
@@ -482,6 +488,9 @@ struct ModelPickerSheet: View {
         )] = [:]
 
         for item in client.models {
+            if item.label.localizedCaseInsensitiveContains("placeholder") || item.modelId.localizedCaseInsensitiveContains("placeholder") {
+                continue
+            }
             let (base, intensity) = Self.parseLabel(item.label)
             if map[base] == nil {
                 order.append(base)

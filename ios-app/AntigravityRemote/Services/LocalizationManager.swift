@@ -185,6 +185,11 @@ public final class LocalizationManager: ObservableObject {
             "fr": "Contexte", "de": "Kontext", "es": "Contexto", "ru": "Контекст",
             "pt": "Contexto", "it": "Contesto", "ar": "السياق"
         ],
+        "模型": [
+            "zh-Hant": "模型", "en": "Model", "ja": "モデル", "ko": "모델",
+            "fr": "Modèle", "de": "Modell", "es": "Modelo", "ru": "Модель",
+            "pt": "Modelo", "it": "Modello", "ar": "النموذج"
+        ],
         "选择模型": [
             "zh-Hant": "選擇模型", "en": "Select Model", "ja": "モデル選択", "ko": "모델 선택",
             "fr": "Choisir modèle", "de": "Modell wählen", "es": "Elegir modelo", "ru": "Выбрать модель",
@@ -222,13 +227,13 @@ public final class LocalizationManager: ObservableObject {
         ],
 
         // 演示模式横幅与按钮
-        "🎮 体验交互演示模式（无需连接 Mac）": [
-            "zh-Hant": "🎮 體驗互動示範模式（無需連線 Mac）", "en": "🎮 Try Interactive Demo (No Mac Needed)",
-            "ja": "🎮 インタラクティブデモを試す（Mac 接続不要）", "ko": "🎮 인터랙티브 데모 체험 (Mac 연결 불필요)",
-            "fr": "🎮 Essayer la démo (Sans Mac)", "de": "🎮 Interaktive Demo testen (Ohne Mac)",
-            "es": "🎮 Probar demo interactiva (Sin Mac)", "ru": "🎮 Попробовать демо (Без Mac)",
-            "pt": "🎮 Experimentar Demo (Sem Mac)", "it": "🎮 Prova Demo Interattiva (Senza Mac)",
-            "ar": "🎮 تجربة العرض التفاعلي (بدون Mac)"
+        "体验交互演示模式（无需连接 Mac）": [
+            "zh-Hant": "體驗互動示範模式（無需連線 Mac）", "en": "Try Interactive Demo (No Mac Needed)",
+            "ja": "インタラクティブデモを試す（Mac 接続不要）", "ko": "인터랙티브 데모 체험 (Mac 연결 불필요)",
+            "fr": "Essayer la démo (Sans Mac)", "de": "Interaktive Demo testen (Ohne Mac)",
+            "es": "Probar demo interactiva (Sin Mac)", "ru": "Попробовать демо (Без Mac)",
+            "pt": "Experimentar Demo (Sem Mac)", "it": "Prova Demo Interattiva (Senza Mac)",
+            "ar": "تجربة العرض التفاعلي (بدون Mac)"
         ],
         "正在体验演示模式（可发送消息、审批命令、查看代码变更）": [
             "zh-Hant": "正在體驗示範模式（可傳送訊息、審批命令、查看代碼變更）",
@@ -476,10 +481,10 @@ public final class LocalizationManager: ObservableObject {
             "fr": "Appairage QR, Tailscale & Connexion", "de": "QR-Kopplung, Tailscale & Verbindung", "es": "Emparejamiento QR, Tailscale y conexión", "ru": "QR-сопряжение, Tailscale и подключение",
             "pt": "Pareamento QR, Tailscale e Conexão", "it": "Accoppiamento QR, Tailscale e connessione", "ar": "المسح الضوئي و Tailscale وإعدادات الاتصال"
         ],
-        "扫码一键配对连接 (/qr)": [
-            "zh-Hant": "掃碼一鍵配對連線 (/qr)", "en": "Scan QR Code to Connect (/qr)", "ja": "QRコードで簡単ペアリング (/qr)", "ko": "QR 코드로 간편 페어링 (/qr)",
-            "fr": "Scanner le QR code (/qr)", "de": "QR-Code scannen zum Verbinden (/qr)", "es": "Escanear código QR (/qr)", "ru": "Сканировать QR для подключения (/qr)",
-            "pt": "Escanear QR Code para conectar (/qr)", "it": "Scansiona QR code per connettere (/qr)", "ar": "مسح الرمز للربط (/qr)"
+        "扫码一键配对连接": [
+            "zh-Hant": "掃碼一鍵配對連線", "en": "Scan QR Code to Connect", "ja": "QRコードで簡単ペアリング", "ko": "QR 코드로 간편 페어링",
+            "fr": "Scanner le QR code", "de": "QR-Code scannen zum Verbinden", "es": "Escanear código QR", "ru": "Сканировать QR для подключения",
+            "pt": "Escanear QR Code para conectar", "it": "Scansiona QR code per connettere", "ar": "مسح الرمز للربط"
         ],
         "通道与连接高级设置": [
             "zh-Hant": "通道與連線進階設定", "en": "Advanced Connection Settings", "ja": "接続の詳細設定", "ko": "고급 연결 설정",
@@ -496,18 +501,18 @@ public final class LocalizationManager: ObservableObject {
             "fr": "Enregistrer et reconnecter", "de": "Speichern & jetzt verbinden", "es": "Guardar y reconectar ahora", "ru": "Сохранить и переподключиться",
             "pt": "Salvar e reconectar agora", "it": "Salva e riconnetti ora", "ar": "حفظ وإعادة الاتصال فوراً"
         ],
-        "隐私声明与关于": [
-            "zh-Hant": "隱私權聲明與關於", "en": "Privacy & About", "ja": "プライバシーと情報", "ko": "개인정보 처리방침 및 정보",
-            "fr": "Confidentialité et à propos", "de": "Datenschutz & Über", "es": "Privacidad y acerca de", "ru": "Конфиденциальность и инфо",
-            "pt": "Privacidade e Sobre", "it": "Privacy e info", "ar": "الخصوصية وحول التطبيق"
+        "隐私声明": [
+            "zh-Hant": "隱私權聲明", "en": "Privacy", "ja": "プライバシー", "ko": "개인정보 처리방침",
+            "fr": "Confidentialité", "de": "Datenschutz", "es": "Privacidad", "ru": "Конфиденциальность",
+            "pt": "Privacidade", "it": "Privacy", "ar": "الخصوصية"
         ],
-        "隐私政策 (Privacy Policy)": [
-            "zh-Hant": "隱私權政策 (Privacy Policy)", "en": "Privacy Policy", "ja": "プライバシーポリシー", "ko": "개인정보 처리방침 (Privacy Policy)",
+        "隐私政策": [
+            "zh-Hant": "隱私權政策", "en": "Privacy Policy", "ja": "プライバシーポリシー", "ko": "개인정보 처리방침",
             "fr": "Politique de confidentialité", "de": "Datenschutzerklärung", "es": "Política de privacidad", "ru": "Политика конфиденциальности",
             "pt": "Política de Privacidade", "it": "Informativa sulla privacy", "ar": "سياسة الخصوصية"
         ],
-        "开源组件许可 (Open Source Licenses)": [
-            "zh-Hant": "開源組件授權 (Open Source Licenses)", "en": "Open Source Licenses", "ja": "オープンソースライセンス", "ko": "오픈소스 라이선스",
+        "开源组件许可": [
+            "zh-Hant": "開源組件授權", "en": "Open Source Licenses", "ja": "オープンソースライセンス", "ko": "오픈소스 라이선스",
             "fr": "Licences open source", "de": "Open-Source-Lizenzen", "es": "Licencias de código abierto", "ru": "Лицензии открытого ПО",
             "pt": "Licenças de código aberto", "it": "Licenze Open Source", "ar": "تراخيص المصدر المفتوح"
         ],
@@ -515,6 +520,19 @@ public final class LocalizationManager: ObservableObject {
             "zh-Hant": "進入互動式示範模式 (Demo Mode)", "en": "Enter Interactive Demo Mode", "ja": "インタラクティブデモモードに入る", "ko": "인터랙티브 데모 모드 진입",
             "fr": "Activer le mode démo interactif", "de": "Interaktiven Demo-Modus starten", "es": "Entrar en modo demo interactivo", "ru": "Войти в интерактивный демо-режим",
             "pt": "Entrar no modo demo interativo", "it": "Entra in modalità demo interattiva", "ar": "الدخول إلى وضع العرض التوضيحي"
+        ],
+        "如有任何问题，请联系邮箱": [
+            "zh-Hant": "如有任何問題，請聯絡信箱",
+            "en": "For any inquiries, contact",
+            "ja": "お問い合わせ窓口:",
+            "ko": "문의 사항:",
+            "fr": "Pour toute question:",
+            "de": "Bei Fragen:",
+            "es": "Para cualquier consulta:",
+            "ru": "По всем вопросам:",
+            "pt": "Para qualquer dúvida:",
+            "it": "Per qualsiasi domanda:",
+            "ar": "لأية استفسارات، يرجى التواصل:"
         ]
     ]
 }
