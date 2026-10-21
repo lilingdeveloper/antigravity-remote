@@ -598,63 +598,8 @@ public struct MainRemoteView: View {
                 }
             }
 
-            if !client.isConnected && !visibleMessages.isEmpty {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    client.enterDemoMode()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "gamecontroller.fill")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                        Text(L("🎮 体验交互演示模式（无需连接 Mac）"))
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.8))
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.green.opacity(0.9), Color.teal],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    )
-                }
-                .buttonStyle(.plain)
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showMacSetupGuideSheet = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "laptopcomputer.and.iphone")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.blue)
-                        Text(L("首次使用？点击查看「2 步极简连接 Mac 教程」"))
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(Color.blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-
-            // 当软件内置 Tailscale 尚未登录账号时，在主界面顶部直接常驻醒目的「一键登录 Tailscale」按钮条！
-            if tailnet.status?.isRunning != true && !tailnet.systemTailscaleActive && !client.isDemoMode {
+            // 仅当从未连接过 Mac、也未处于连接状态且内置 Tailscale 未登录时提示登录
+            if !client.isConnected && !client.hasEverConnectedMac && tailnet.status?.isRunning != true && !tailnet.systemTailscaleActive && !client.isDemoMode {
                 HStack(spacing: 8) {
                     Image(systemName: "person.badge.key.fill")
                         .font(.caption.weight(.bold))
@@ -1053,7 +998,7 @@ public struct MainRemoteView: View {
             }
 
             VStack(alignment: .leading, spacing: 10) {
-                if !client.isConnected {
+                if client.shouldShowFirstTimeMacOnboarding {
                     VStack(alignment: .leading, spacing: 14) {
                         HStack(spacing: 8) {
                             Image(systemName: "laptopcomputer.and.iphone")

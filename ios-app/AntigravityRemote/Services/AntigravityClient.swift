@@ -74,6 +74,8 @@ public final class AntigravityClient: ObservableObject {
 
     @Published public private(set) var isConnected: Bool = false
     @Published public private(set) var isReconnecting: Bool = false
+    @Published public private(set) var hasEverConnectedMac: Bool =
+        UserDefaults.standard.bool(forKey: "agy.hasEverConnectedMac")
     @Published public private(set) var routeKind: RouteChannelKind = .probing
     @Published public private(set) var connectionRouteDescription: String = "正在智能选路..."
     @Published public private(set) var latencyMs: Int?
@@ -1038,9 +1040,20 @@ public final class AntigravityClient: ObservableObject {
 
     // MARK: - 数据拉取与控制指令
 
-    private var hasConfiguredHost: Bool {
+    public var hasConfiguredHost: Bool {
         !serverHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
         !fallbackLanHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    public var shouldShowFirstTimeMacOnboarding: Bool {
+        !isConnected && !isDemoMode && !hasEverConnectedMac && !hasConfiguredHost && conversations.isEmpty
+    }
+
+    private func markMacConnected() {
+        if !hasEverConnectedMac {
+            hasEverConnectedMac = true
+            UserDefaults.standard.set(true, forKey: "agy.hasEverConnectedMac")
+        }
     }
 
     public func refreshAll() async {
@@ -1075,6 +1088,9 @@ public final class AntigravityClient: ObservableObject {
             let st: DaemonStatusResponse = try await request(path: "/api/v1/status")
             daemonStatus = st
             isConnected = (st.online == true)
+            if isConnected {
+                markMacConnected()
+            }
             isReconnecting = false
             lastError = nil
 
@@ -1104,6 +1120,7 @@ public final class AntigravityClient: ObservableObject {
             }
         } catch HTTPNotModifiedSignal.notModified {
             isConnected = true
+            markMacConnected()
             isReconnecting = false
             lastError = nil
         } catch {
@@ -2003,6 +2020,7 @@ public final class AntigravityClient: ObservableObject {
             routeKind = .lanDirect
             latencyMs = rtt
             isConnected = true
+            markMacConnected()
             isReconnecting = false
             lastError = nil
             connectionRouteDescription = "局域网极速 (\(targetHost)) · \(rtt)ms"
