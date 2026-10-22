@@ -728,20 +728,51 @@ try {
 startRealtimePushLoop();
 
 if (require.main === module) {
-  server.listen(PORT, HOST, () => {
-    const lsInfo = discovery.getConnectionInfo(true);
+  let lanServer = null;
+  let boundLanIp = '';
+  let boundTsIp = '';
+
+  function syncDynamicInterfaceListeners() {
+    if (EXPLICIT_HOST) return;
     const net = netManager.scanNetworkInterfaces();
     const tsIp = net.systemTailscaleIp || '';
+    const lanIp = net.lanIp || '';
 
-    // 当未显式指定 HOST 时，默认仅绑定 127.0.0.1，并在检测到系统级 Tailscale IP 时额外绑定 Tailscale 虚拟网卡地址
-    if (!EXPLICIT_HOST && tsIp && tsIp !== '127.0.0.1') {
+    if (tsIp && tsIp !== '127.0.0.1' && tsIp !== boundTsIp) {
+      if (tailscaleServer) {
+        try { tailscaleServer.close(); } catch (_) {}
+      }
+      boundTsIp = tsIp;
       tailscaleServer = http.createServer(requestHandler);
       attachWebSocketUpgrade(tailscaleServer);
       tailscaleServer.on('error', (err) => {
         console.warn(`[Tailscale Listener] 绑定 ${tsIp}:${PORT} 失败: ${err.message}`);
+        boundTsIp = '';
       });
       tailscaleServer.listen(PORT, tsIp);
     }
+
+    if (lanIp && lanIp !== '127.0.0.1' && lanIp !== tsIp && lanIp !== boundLanIp) {
+      if (lanServer) {
+        try { lanServer.close(); } catch (_) {}
+      }
+      boundLanIp = lanIp;
+      lanServer = http.createServer(requestHandler);
+      attachWebSocketUpgrade(lanServer);
+      lanServer.on('error', (err) => {
+        console.warn(`[LAN Listener] 绑定 ${lanIp}:${PORT} 失败: ${err.message}`);
+        boundLanIp = '';
+      });
+      lanServer.listen(PORT, lanIp);
+    }
+  }
+
+  server.listen(PORT, HOST, () => {
+    const lsInfo = discovery.getConnectionInfo(true);
+    const net = netManager.scanNetworkInterfaces();
+
+    syncDynamicInterfaceListeners();
+    setInterval(syncDynamicInterfaceListeners, 5000).unref();
 
     console.log('\n============================================================');
     console.log('🚀 Antigravity Remote Control Daemon (iOS + PWA) 已启动');
@@ -757,11 +788,7 @@ if (require.main === module) {
     console.log(`🏠 本机访问地址 : http://127.0.0.1:${PORT}/?token=${encodeURIComponent(config.accessToken)}`);
     console.log(`🔗 扫码配对页面 : http://127.0.0.1:${PORT}/qr`);
     if (net.lanUrl) {
-      if (EXPLICIT_HOST === '0.0.0.0' || EXPLICIT_HOST === net.lanIp) {
-        console.log(`📶 局域网地址   : ${net.lanUrl}/?token=${encodeURIComponent(config.accessToken)}`);
-      } else {
-        console.log(`📶 局域网地址   : ${net.lanUrl} (默认未暴露至公共局域网，如需开启局域网访问请设置 HOST=0.0.0.0)`);
-      }
+      console.log(`📶 局域网地址   : ${net.lanUrl}/?token=${encodeURIComponent(config.accessToken)}`);
     }
     if (net.systemTailscaleActive) {
       console.log(

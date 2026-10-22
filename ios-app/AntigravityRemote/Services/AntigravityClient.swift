@@ -538,22 +538,27 @@ public final class AntigravityClient: ObservableObject {
             return
         }
         guard lastNetworkSignature != newSignature else { return }
-        let prev = lastNetworkSignature
         lastNetworkSignature = newSignature
 
-        // 1. 清理路由缓存
+        // 1. 清理路由缓存并唤醒 Tailnet 底层网络栈（不销毁本地端口转发，避免竞态断开）
         invalidateRouteCache()
+        TailnetManager.shared.wake(reason: "网络环境切换: \(reason)", resetLocalForwards: false)
 
         // 2. 彻底销毁旧套接字池，避免残留 TCP 阻滞
         rebuildFastSession()
 
-        // 3. 网络环境突变时 (Wi-Fi <-> 5G / VPN)，300ms 抖动抑制后强制重竞速选路并重连 SSE
+        // 3. 网络环境突变时 (Wi-Fi <-> 5G / VPN)，进行多阶段渐进式竞速探测（兼容蜂窝/DERP 握手延迟）
         networkSwitchTask?.cancel()
         networkSwitchTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            await self.reprobeAndSwitchRouteIfNeeded(force: true)
+            let checkpointsMs = [250, 950, 1400]
+            for (idx, delayMs) in checkpointsMs.enumerated() {
+                try? await Task.sleep(for: .milliseconds(delayMs))
+                guard !Task.isCancelled else { return }
+                if idx == 0 || !self.isConnected || self.routeKind != .lanDirect {
+                    await self.reprobeAndSwitchRouteIfNeeded(force: true)
+                }
+            }
         }
     }
 
@@ -980,7 +985,7 @@ public final class AntigravityClient: ObservableObject {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        req.timeoutInterval = (method == "POST") ? 45 : 4.0
+        req.timeoutInterval = (method == "POST") ? 45 : 2.2
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !accessToken.isEmpty {
             req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -1022,9 +1027,14 @@ public final class AntigravityClient: ObservableObject {
             }
             // 若当前缓存路由失效 (例如从 Wi-Fi 切换到 5G 或 Tailscale 切换)，立即强制重选最优路由并无感重试一次
             if retryOnFailure {
+                let oldBase = cachedBaseURL
                 invalidateRouteCache()
+                TailnetManager.shared.wake(reason: "请求失败触发通道重选", resetLocalForwards: false)
                 rebuildFastSession()
                 let newBase = try await resolveBestBaseURL(forceProbe: true)
+                if oldBase != newBase {
+                    reconnectSSEIfActive()
+                }
                 guard let retryURL = URL(string: path, relativeTo: newBase) else { throw error }
                 req.url = retryURL
                 let (data, resp) = try await fastSession.data(for: req)
@@ -1102,9 +1112,16 @@ public final class AntigravityClient: ObservableObject {
             // 双向自动同步保存 Mac 的 LAN IP 与 Tailscale IP:
             // 1. 同步 LAN IP 到 fallbackLanHost
             if let macLan = st.network?.lanIP?.trimmingCharacters(in: .whitespacesAndNewlines), !macLan.isEmpty {
-                if fallbackLanHost != macLan {
+                let lanUpdated = (fallbackLanHost != macLan)
+                if lanUpdated {
                     fallbackLanHost = macLan
                     UserDefaults.standard.set(macLan, forKey: "agy.fallbackLanHost")
+                }
+                if routeKind != .lanDirect && (lanUpdated || lastLanUpgradeProbeAt == nil) {
+                    lastLanUpgradeProbeAt = nil
+                    Task { @MainActor [weak self] in
+                        await self?.probeLanUpgradeIfNeeded()
+                    }
                 }
             }
 
@@ -1986,11 +2003,9 @@ public final class AntigravityClient: ObservableObject {
 
     private func probeLanUpgradeIfNeeded() async {
         guard !isDemoMode, hasConfiguredHost else { return }
-        // 仅在当前处于非局域网直连（如 Tailscale 通道或重连探测态）时，尝试探测是否有局域网极速通道可用
-        guard routeKind != .lanDirect else { return }
 
-        // 每 3.5 秒探测一次，避免过于频繁占用资源
-        if let last = lastLanUpgradeProbeAt, Date().timeIntervalSince(last) < 3.5 {
+        // 每 2.4 秒进行一次轻量通道健康与优选探测
+        if let last = lastLanUpgradeProbeAt, Date().timeIntervalSince(last) < 2.4 {
             return
         }
         lastLanUpgradeProbeAt = Date()
@@ -2008,6 +2023,41 @@ public final class AntigravityClient: ObservableObject {
             lanCandidate = nil
         }
 
+        // 情况 A：当前处于局域网直连，探测局域网是否仍然存活；一旦断开或切换到外部网络，秒级平滑切回 Tailscale
+        if routeKind == .lanDirect {
+            guard let activeBase = cachedBaseURL,
+                  let pingURL = URL(string: "/api/v1/ping", relativeTo: activeBase) else {
+                await reprobeAndSwitchRouteIfNeeded(force: true)
+                return
+            }
+            var req = URLRequest(url: pingURL)
+            req.timeoutInterval = 0.9
+            req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            let start = DispatchTime.now().uptimeNanoseconds
+            do {
+                let (data, resp) = try await fastSession.data(for: req)
+                if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
+                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   (json["ok"] as? Bool) == true {
+                    let rtt = max(1, Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000))
+                    latencyMs = rtt
+                    lastRouteVerifiedAt = Date()
+                    if let host = activeBase.host {
+                        connectionRouteDescription = "局域网极速 (\(host)) · \(rtt)ms"
+                    }
+                    return
+                }
+            } catch {
+                // 局域网探测失败，立即触发无缝回退至 Tailscale
+            }
+            invalidateRouteCache()
+            TailnetManager.shared.wake(reason: "局域网不可达自动回退 Tailscale", resetLocalForwards: false)
+            rebuildFastSession()
+            await reprobeAndSwitchRouteIfNeeded(force: true)
+            return
+        }
+
+        // 情况 B：当前处于非局域网直连（如 Tailscale 通道或重连探测态），尝试探测是否有局域网极速通道可用以自动升级
         guard let targetHost = lanCandidate,
               let lanPingURL = URL(string: "http://\(targetHost):\(serverPort)/api/v1/ping") else {
             return
@@ -2044,7 +2094,11 @@ public final class AntigravityClient: ObservableObject {
                 await fetchStatus()
             }
         } catch {
-            // 局域网尚不可达，继续静默维持当前 Tailscale 通道
+            // 局域网尚不可达，若当前处于未连接状态则唤醒 Tailnet 尝试恢复连接
+            if !isConnected {
+                TailnetManager.shared.wake(reason: "未连接状态唤醒 Tailnet", resetLocalForwards: false)
+                await reprobeAndSwitchRouteIfNeeded(force: true)
+            }
         }
     }
 

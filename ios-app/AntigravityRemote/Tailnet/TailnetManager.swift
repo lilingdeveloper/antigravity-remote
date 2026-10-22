@@ -318,10 +318,10 @@ public final class TailnetManager: ObservableObject {
         guard started, !suppressedBySystem else { return }
         networkRecoveryTask?.cancel()
         networkRecoveryTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
+            try? await Task.sleep(for: .milliseconds(150))
             guard let self, !Task.isCancelled else { return }
-            // 网络路径变化时重置旧接口上的残留转发端口并唤醒引擎
-            self.wake(reason: "网络切换 \(previous) → \(signature)", resetLocalForwards: true)
+            // 网络路径变化时立即唤醒底层引擎重绑物理接口，保留本地 127.0.0.1 转发端口以免打断刚切换过来的请求
+            self.wake(reason: "网络切换 \(previous) → \(signature)", resetLocalForwards: false)
         }
     }
 

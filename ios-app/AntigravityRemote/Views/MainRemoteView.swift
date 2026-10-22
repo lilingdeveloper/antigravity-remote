@@ -2417,7 +2417,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 11)")
+                LabeledContent("版本号", value: "1.0.0 (Build 12)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))
