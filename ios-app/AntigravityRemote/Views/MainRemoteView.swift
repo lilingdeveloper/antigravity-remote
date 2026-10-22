@@ -51,6 +51,7 @@ public struct MainRemoteView: View {
     @State private var isFetchingLoginURL = false
     @State private var sidebarDragOffset: CGFloat = 0
     @State private var isChatAtBottom: Bool = true
+    @StateObject private var chatScrollBridge = ChatScrollBridge()
     @State private var expandedToolIds: Set<String> = []
     @State private var expandedUserTurnIds: Set<String> = []
     @State private var expandedPlanCodeTurnIds: Set<String> = []
@@ -896,49 +897,59 @@ public struct MainRemoteView: View {
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottom) {
                     ScrollView {
-                        if visibleMessages.isEmpty && !client.isGenerating {
-                            emptyConversationWelcome
-                                .padding(16)
-                                .background(ChatScrollObserver(isAtBottom: $isChatAtBottom))
-                        } else {
-                            let turns = chatTurnGroups
-                            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                                ForEach(Array(turns.enumerated()), id: \.element.id) { idx, turn in
-                                    let isLastTurn = (idx == turns.count - 1)
-                                    Section {
-                                        VStack(alignment: .leading, spacing: 14) {
-                                            ForEach(turn.responseItems) { item in
-                                                turnResponseItemRow(item)
-                                                    .id(item.id)
+                        VStack(spacing: 0) {
+                            if visibleMessages.isEmpty && !client.isGenerating {
+                                emptyConversationWelcome
+                                    .padding(16)
+                            } else {
+                                let turns = chatTurnGroups
+                                LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                                    ForEach(Array(turns.enumerated()), id: \.element.id) { idx, turn in
+                                        let isLastTurn = (idx == turns.count - 1)
+                                        Section {
+                                            VStack(alignment: .leading, spacing: 14) {
+                                                ForEach(turn.responseItems) { item in
+                                                    turnResponseItemRow(item)
+                                                        .id(item.id)
+                                                }
+                                                if (isLastTurn && (!client.artifacts.isEmpty || !client.diffs.isEmpty || !turn.fileModificationTools.isEmpty)) ||
+                                                   (!isLastTurn && !turn.fileModificationTools.isEmpty) {
+                                                    turnPlanAndCodeCategoryCard(turn: turn, isLatestTurn: isLastTurn)
+                                                        .id("PLAN_CODE_CATEGORY_\(turn.id)")
+                                                }
+                                                if isLastTurn && shouldShowWorkingIndicator {
+                                                    aiWorkingIndicatorRow
+                                                        .id("AI_WORKING_INDICATOR")
+                                                }
                                             }
-                                            if (isLastTurn && (!client.artifacts.isEmpty || !client.diffs.isEmpty || !turn.fileModificationTools.isEmpty)) ||
-                                               (!isLastTurn && !turn.fileModificationTools.isEmpty) {
-                                                turnPlanAndCodeCategoryCard(turn: turn, isLatestTurn: isLastTurn)
-                                                    .id("PLAN_CODE_CATEGORY_\(turn.id)")
+                                            .padding(.horizontal, 16)
+                                            .padding(.top, 8)
+                                            .padding(.bottom, 22)
+                                        } header: {
+                                            if let userMsg = turn.userMessage {
+                                                stickyUserTurnHeader(userMsg)
+                                                    .id(userMsg.id)
                                             }
-                                            if isLastTurn && shouldShowWorkingIndicator {
-                                                aiWorkingIndicatorRow
-                                                    .id("AI_WORKING_INDICATOR")
-                                            }
-                                        }
-                                        .padding(.horizontal, 16)
-                                        .padding(.top, 8)
-                                        .padding(.bottom, 22)
-                                    } header: {
-                                        if let userMsg = turn.userMessage {
-                                            stickyUserTurnHeader(userMsg)
-                                                .id(userMsg.id)
                                         }
                                     }
                                 }
-
-                                Color.clear
-                                    .frame(height: 1)
-                                    .id("BOTTOM_ANCHOR")
                             }
-                            .background(ChatScrollObserver(isAtBottom: $isChatAtBottom))
+
+                            Color.clear
+                                .frame(height: 1)
+                                .id("BOTTOM_ANCHOR")
+                        }
+                        .background(
+                            ChatScrollObserver(
+                                isAtBottom: $isChatAtBottom,
+                                bridge: chatScrollBridge
+                            )
+                        )
+                        .onAppear {
+                            scrollToBottom(proxy, animated: false)
                         }
                     }
+                    .trackChatScrollAtBottom($isChatAtBottom, bridge: chatScrollBridge)
                     .environment(\.openURL, OpenURLAction { url in
                         handleChatLinkTap(url)
                     })
@@ -950,23 +961,23 @@ public struct MainRemoteView: View {
                     .id(client.currentCascadeId)
                     .onChange(of: client.currentCascadeId) { _ in
                         isChatAtBottom = true
-                        scrollToBottom(proxy)
+                        scrollToBottom(proxy, animated: false)
                     }
-                    .onChange(of: client.messages.count) { _ in
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+                    .onChange(of: client.messages.count) { oldCount, newCount in
+                        if oldCount == 0 || abs(newCount - oldCount) > 1 || chatScrollBridge.isScrollingToBottomProgrammatically {
+                            scrollToBottom(proxy, animated: false)
+                        } else if isChatAtBottom {
+                            scrollToBottom(proxy, animated: true)
                         }
                     }
                     .onChange(of: client.isGenerating) { isGen in
-                        if isGen {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
-                            }
+                        if isGen && isChatAtBottom {
+                            scrollToBottom(proxy, animated: true)
                         }
                     }
                     .onChange(of: client.messages.last?.text) { _ in
-                        if client.isGenerating {
-                            proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+                        if client.isGenerating && isChatAtBottom {
+                            scrollToBottom(proxy, animated: false)
                         }
                     }
 
@@ -974,19 +985,24 @@ public struct MainRemoteView: View {
                     if !visibleMessages.isEmpty && !isChatAtBottom && client.activeMarketingScene == nil {
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            scrollToBottom(proxy)
+                            scrollToBottom(proxy, animated: true)
                         } label: {
                             Image(systemName: "arrow.down")
-                                .font(.system(size: 13, weight: .bold))
+                                .font(.system(size: 14, weight: .bold))
                                 .foregroundStyle(.primary)
-                                .frame(width: 36, height: 36)
-                                .background(.ultraThinMaterial, in: Circle())
-                                .shadow(color: .black.opacity(0.15), radius: 6, y: 2)
+                                .frame(width: 38, height: 38)
+                                .background(.regularMaterial, in: Circle())
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.primary.opacity(0.12), lineWidth: 0.8)
+                                )
+                                .shadow(color: .black.opacity(0.18), radius: 8, y: 3)
                         }
                         .buttonStyle(.plain)
                         .contentShape(Circle())
-                        .zIndex(10)
-                        .padding(.bottom, 10)
+                        .transition(.scale(scale: 0.85).combined(with: .opacity))
+                        .zIndex(20)
+                        .padding(.bottom, 12)
                     }
                 }
             }
@@ -1006,49 +1022,85 @@ public struct MainRemoteView: View {
         }
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+    private func scrollToBottom(_ proxy: ScrollViewProxy, animated: Bool = true) {
         isChatAtBottom = true
-        // 第一步：直接对齐底部锚点，触发 LazyVStack 加载底层视图
-        proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
-
-        // 第二步：短延迟等待气泡渲染后，对齐最后一条消息及底部锚点
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            if shouldShowWorkingIndicator {
-                proxy.scrollTo("AI_WORKING_INDICATOR", anchor: .bottom)
-            } else if let lastMsg = visibleMessages.last {
-                proxy.scrollTo(lastMsg.id, anchor: .bottom)
-            }
-            proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+        guard !visibleMessages.isEmpty || shouldShowWorkingIndicator else {
+            chatScrollBridge.resetToTop()
+            return
         }
 
-        // 第三步：最终平滑收尾，确保彻底滚到最底部
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
-            withAnimation(.easeOut(duration: 0.15)) {
+        if animated {
+            chatScrollBridge.beginProgrammaticScrollToBottom(duration: 0.40)
+            withAnimation(.easeOut(duration: 0.22)) {
                 proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+            }
+            chatScrollBridge.scrollToBottom(animated: true)
+
+            for delay in [0.10, 0.24, 0.36] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    guard !chatScrollBridge.isUserInteracting else { return }
+                    var tx = Transaction()
+                    tx.disablesAnimations = true
+                    withTransaction(tx) {
+                        proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+                    }
+                    chatScrollBridge.clampOverscrollAndSnapToBottom()
+                }
+            }
+        } else {
+            chatScrollBridge.beginProgrammaticScrollToBottom(duration: 0.42)
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+            }
+            chatScrollBridge.clampOverscrollAndSnapToBottom()
+
+            for delay in [0.02, 0.07, 0.16, 0.28, 0.38] {
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    guard !chatScrollBridge.isUserInteracting else { return }
+                    guard !visibleMessages.isEmpty || shouldShowWorkingIndicator else {
+                        chatScrollBridge.resetToTop()
+                        return
+                    }
+                    var tx = Transaction()
+                    tx.disablesAnimations = true
+                    withTransaction(tx) {
+                        proxy.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+                    }
+                    chatScrollBridge.clampOverscrollAndSnapToBottom()
+                }
             }
         }
     }
 
-    // MARK: - 聊天滚动监听器 (判断是否在底部 & 禁用 scrollsToTop)
+    // MARK: - 聊天滚动监听器 (判断是否在底部、防止切换对话过滚空白 & 禁用 scrollsToTop)
 
     private struct ChatScrollObserver: UIViewRepresentable {
         @Binding var isAtBottom: Bool
+        let bridge: ChatScrollBridge
 
         func makeCoordinator() -> Coordinator {
-            Coordinator(isAtBottom: $isAtBottom)
+            Coordinator(isAtBottom: $isAtBottom, bridge: bridge)
         }
 
-        func makeUIView(context: Context) -> UIView {
-            let view = UIView(frame: .zero)
+        func makeUIView(context: Context) -> ScrollProbeUIView {
+            let view = ScrollProbeUIView(frame: .zero)
             view.backgroundColor = .clear
             view.isUserInteractionEnabled = false
+            view.onAttachCheck = { [weak coordinator = context.coordinator] probe in
+                coordinator?.attach(to: probe)
+            }
             DispatchQueue.main.async {
                 context.coordinator.attach(to: view)
             }
             return view
         }
 
-        func updateUIView(_ uiView: UIView, context: Context) {
+        func updateUIView(_ uiView: ScrollProbeUIView, context: Context) {
+            uiView.onAttachCheck = { [weak coordinator = context.coordinator] probe in
+                coordinator?.attach(to: probe)
+            }
             if context.coordinator.observedScrollView == nil || context.coordinator.observedScrollView?.window == nil {
                 DispatchQueue.main.async {
                     context.coordinator.attach(to: uiView)
@@ -1058,26 +1110,33 @@ public struct MainRemoteView: View {
 
         final class Coordinator: NSObject {
             @Binding var isAtBottom: Bool
+            let bridge: ChatScrollBridge
             weak var observedScrollView: UIScrollView?
             private var offsetObservation: NSKeyValueObservation?
             private var sizeObservation: NSKeyValueObservation?
+            private var boundsObservation: NSKeyValueObservation?
+            private var isClampingOffset: Bool = false
 
-            init(isAtBottom: Binding<Bool>) {
+            init(isAtBottom: Binding<Bool>, bridge: ChatScrollBridge) {
                 self._isAtBottom = isAtBottom
+                self.bridge = bridge
             }
 
             func attach(to view: UIView) {
+                guard view.window != nil else { return }
                 var current: UIView? = view
                 while let parent = current?.superview {
                     if let sv = parent as? UIScrollView {
                         if #available(iOS 26.0, *) {
                             sv.topEdgeEffect.isHidden = true
                         }
+                        sv.scrollsToTop = false
+                        bridge.scrollView = sv
                         if self.observedScrollView !== sv {
                             self.observedScrollView = sv
-                            sv.scrollsToTop = false
                             setupObservations(for: sv)
                         }
+                        checkBottom(sv)
                         break
                     }
                     current = parent
@@ -1091,19 +1150,42 @@ public struct MainRemoteView: View {
                 sizeObservation = sv.observe(\.contentSize, options: [.initial, .new]) { [weak self] sv, _ in
                     self?.checkBottom(sv)
                 }
+                boundsObservation = sv.observe(\.bounds, options: [.initial, .new]) { [weak self] sv, _ in
+                    self?.checkBottom(sv)
+                }
             }
 
             private func checkBottom(_ sv: UIScrollView) {
-                if !sv.isDragging && !sv.isTracking && !sv.isDecelerating,
-                   sv.bounds.height > 0 && sv.contentSize.height > 0 {
-                    let maxOffsetY = max(0, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
-                    if sv.contentOffset.y > maxOffsetY + 12 {
-                        sv.setContentOffset(CGPoint(x: 0, y: maxOffsetY), animated: false)
+                guard !isClampingOffset else { return }
+                guard sv.bounds.height > 0 else { return }
+
+                if sv.isTracking || sv.isDragging {
+                    bridge.cancelProgrammaticScroll()
+                }
+
+                let minOffsetY = -sv.adjustedContentInset.top
+                let maxOffsetY = max(minOffsetY, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+
+                if !sv.isDragging && !sv.isTracking && !sv.isDecelerating {
+                    if bridge.isScrollingToBottomProgrammatically {
+                        if abs(sv.contentOffset.y - maxOffsetY) > 0.5 {
+                            isClampingOffset = true
+                            sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: maxOffsetY), animated: false)
+                            isClampingOffset = false
+                        }
+                    } else if sv.contentOffset.y > maxOffsetY + 1 {
+                        isClampingOffset = true
+                        sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: maxOffsetY), animated: false)
+                        isClampingOffset = false
+                    } else if sv.contentOffset.y < minOffsetY - 1 {
+                        isClampingOffset = true
+                        sv.setContentOffset(CGPoint(x: sv.contentOffset.x, y: minOffsetY), animated: false)
+                        isClampingOffset = false
                     }
                 }
 
-                let maxOffsetY = max(0, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
-                let atBottom = (maxOffsetY - sv.contentOffset.y) <= 45
+                let distanceFromBottom = maxOffsetY - sv.contentOffset.y
+                let atBottom = bridge.isScrollingToBottomProgrammatically ? true : (distanceFromBottom <= 50)
                 if atBottom != isAtBottom {
                     DispatchQueue.main.async { [weak self] in
                         guard let self = self else { return }
@@ -1117,6 +1199,7 @@ public struct MainRemoteView: View {
             deinit {
                 offsetObservation?.invalidate()
                 sizeObservation?.invalidate()
+                boundsObservation?.invalidate()
             }
         }
     }
@@ -3397,7 +3480,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 16)")
+                LabeledContent("版本号", value: "1.0.0 (Build 17)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))
@@ -3410,6 +3493,90 @@ public struct MainRemoteView: View {
         }
         .hideTopScrollEdgeEffect()
         .background(TopScrollEdgeDisabler(selectedTab: selectedTab))
+    }
+}
+
+// MARK: - 聊天滚动桥接器与探测视图 (保障切换对话零过滚 & 历史回底按钮实时浮现)
+private final class ChatScrollBridge: ObservableObject {
+    weak var scrollView: UIScrollView?
+    var isScrollingToBottomProgrammatically: Bool = false
+    private var programmaticScrollResetWorkItem: DispatchWorkItem?
+
+    var isUserInteracting: Bool {
+        guard let sv = scrollView else { return false }
+        return sv.isTracking || sv.isDragging || sv.isDecelerating
+    }
+
+    func beginProgrammaticScrollToBottom(duration: TimeInterval) {
+        isScrollingToBottomProgrammatically = true
+        programmaticScrollResetWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.isScrollingToBottomProgrammatically = false
+        }
+        programmaticScrollResetWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: item)
+    }
+
+    func cancelProgrammaticScroll() {
+        isScrollingToBottomProgrammatically = false
+        programmaticScrollResetWorkItem?.cancel()
+        programmaticScrollResetWorkItem = nil
+    }
+
+    func resetToTop() {
+        guard let sv = scrollView else { return }
+        let minOffsetY = -sv.adjustedContentInset.top
+        if abs(sv.contentOffset.y - minOffsetY) > 0.5 {
+            sv.setContentOffset(CGPoint(x: 0, y: minOffsetY), animated: false)
+        }
+    }
+
+    func scrollToBottom(animated: Bool) {
+        guard let sv = scrollView else { return }
+        sv.layoutIfNeeded()
+        guard sv.bounds.height > 0 else { return }
+        let minOffsetY = -sv.adjustedContentInset.top
+        let maxOffsetY = max(minOffsetY, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+        if abs(sv.contentOffset.y - maxOffsetY) > 0.5 {
+            sv.setContentOffset(CGPoint(x: 0, y: maxOffsetY), animated: animated)
+        }
+    }
+
+    func clampOverscrollAndSnapToBottom() {
+        guard let sv = scrollView, !isUserInteracting else { return }
+        sv.layoutIfNeeded()
+        guard sv.bounds.height > 0 else { return }
+        let minOffsetY = -sv.adjustedContentInset.top
+        let maxOffsetY = max(minOffsetY, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+        if abs(sv.contentOffset.y - maxOffsetY) > 0.5 {
+            sv.setContentOffset(CGPoint(x: 0, y: maxOffsetY), animated: false)
+            sv.layoutIfNeeded()
+            let updatedMaxY = max(minOffsetY, sv.contentSize.height + sv.adjustedContentInset.bottom - sv.bounds.height)
+            if abs(sv.contentOffset.y - updatedMaxY) > 0.5 {
+                sv.setContentOffset(CGPoint(x: 0, y: updatedMaxY), animated: false)
+            }
+        }
+    }
+}
+
+private final class ScrollProbeUIView: UIView {
+    var onAttachCheck: ((UIView) -> Void)?
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil {
+            onAttachCheck?(self)
+        }
+    }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        onAttachCheck?(self)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        onAttachCheck?(self)
     }
 }
 
@@ -3455,6 +3622,30 @@ private extension View {
     func hideTopScrollEdgeEffect() -> some View {
         if #available(iOS 26.0, *) {
             self.scrollEdgeEffectHidden(true, for: .top)
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    func trackChatScrollAtBottom(_ isAtBottom: Binding<Bool>, bridge: ChatScrollBridge) -> some View {
+        if #available(iOS 18.0, *) {
+            self.onScrollGeometryChange(for: Bool.self) { geo in
+                let visibleHeight = geo.containerSize.height - geo.contentInsets.top - geo.contentInsets.bottom
+                guard visibleHeight > 0, geo.contentSize.height > visibleHeight else { return true }
+                let distanceFromBottom = geo.contentSize.height - (geo.contentOffset.y + geo.containerSize.height - geo.contentInsets.bottom)
+                return distanceFromBottom <= 50
+            } action: { _, newValue in
+                if bridge.isScrollingToBottomProgrammatically && !bridge.isUserInteracting {
+                    if !isAtBottom.wrappedValue {
+                        isAtBottom.wrappedValue = true
+                    }
+                    return
+                }
+                if isAtBottom.wrappedValue != newValue {
+                    isAtBottom.wrappedValue = newValue
+                }
+            }
         } else {
             self
         }

@@ -217,6 +217,8 @@ public final class AntigravityClient: ObservableObject {
     private var userManualModelOverrideByCascadeId: [String: String] = [:]
     private var conversationActivePermissionCache: [String: AgentPermissionMode] = [:]
     private var userManualPermissionOverrideByCascadeId: [String: AgentPermissionMode] = [:]
+    private var conversationDiffsCache: [String: [FileDiffItem]] = [:]
+    private var conversationArtifactsCache: [String: [ArtifactItem]] = [:]
     private var pollTask: Task<Void, Never>?
     private var sseTask: Task<Void, Never>?
     private var sseConnectedCascadeId: String = ""
@@ -1308,8 +1310,6 @@ public final class AntigravityClient: ObservableObject {
             return
         }
         let changed = (currentCascadeId != convo.id)
-        currentCascadeId = convo.id
-        currentWorkspaceUri = convo.workspaceUri ?? ""
         lastSyncedStepCount = -1
 
         let cachedActive = conversationActiveModelCache[convo.id] ?? ""
@@ -1328,11 +1328,15 @@ public final class AntigravityClient: ObservableObject {
             pendingInteraction = nil
             let cached = conversationMessagesCache[convo.id] ?? []
             messages = cached
+            diffs = conversationDiffsCache[convo.id] ?? []
+            artifacts = conversationArtifactsCache[convo.id] ?? []
             if cached.isEmpty {
                 etagByPath.removeValue(forKey: "/api/v1/conversations/\(convo.id)")
             }
             contextUsage = conversationContextUsageCache[convo.id]
         }
+        currentWorkspaceUri = convo.workspaceUri ?? ""
+        currentCascadeId = convo.id
         UserDefaults.standard.set(currentCascadeId, forKey: "agy.currentCascadeId")
         UserDefaults.standard.set(currentWorkspaceUri, forKey: "agy.currentWorkspaceUri")
         ensureSSESubscription(cascadeId: convo.id)
@@ -1506,9 +1510,11 @@ public final class AntigravityClient: ObservableObject {
         if isDemoMode { return }
         guard !cascadeId.isEmpty else { return }
         guard let res: DiffsAndArtifactsResponse = try? await request(path: "/api/v1/conversations/\(cascadeId)/diffs") else { return }
-        guard cascadeId == currentCascadeId else { return }
         let newDiffs = res.diffs ?? []
         let newArtifacts = res.artifacts ?? []
+        conversationDiffsCache[cascadeId] = newDiffs
+        conversationArtifactsCache[cascadeId] = newArtifacts
+        guard cascadeId == currentCascadeId else { return }
         if diffs != newDiffs { diffs = newDiffs }
         if artifacts != newArtifacts { artifacts = newArtifacts }
     }
