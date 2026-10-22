@@ -504,9 +504,11 @@ const requestHandler = async (req, res) => {
       const body = await readJsonBody(req);
       const created = await rpcClient.startConversation({
         workspaceUri: body.workspaceUri || '',
+        title: body.title || '',
         text: body.text || body.message || '',
         model: body.model || '',
-        media: Array.isArray(body.media) ? body.media : []
+        media: Array.isArray(body.media) ? body.media : [],
+        permissionMode: body.permissionMode || ''
       });
       return sendJson(res, 200, { ok: true, ...created }, req);
     }
@@ -538,7 +540,8 @@ const requestHandler = async (req, res) => {
         model: body.model || '',
         media: Array.isArray(body.media) ? body.media : [],
         artifactApprovalUri: body.artifactApprovalUri || '',
-        queueIfBusy: body.queueIfBusy !== false
+        queueIfBusy: body.queueIfBusy !== false,
+        permissionMode: body.permissionMode || ''
       });
       sendJson(res, 200, {
         ok: true,

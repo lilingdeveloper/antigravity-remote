@@ -21,6 +21,8 @@ class AntigravityRpcClient {
     this._recentDispatchedUserMessages = new Map();
     // 缓存本地 transcript.jsonl 解析结果: cascadeId -> { targetPath, mtimeMs, size, map }
     this._transcriptCache = new Map();
+    // 记录新建的空会话及其自定义标题: cascadeId -> { id, title, workspaceUri, createdAt }
+    this._pendingBlankConversations = new Map();
   }
 
   /**
@@ -108,15 +110,23 @@ class AntigravityRpcClient {
     const projectsMap = new Map();
 
     for (const [cascadeId, item] of Object.entries(summaries)) {
+      const pendingMeta = this._pendingBlankConversations.get(cascadeId);
       const title =
         (item.annotations && item.annotations.title) ||
+        (pendingMeta && pendingMeta.title) ||
         item.summary ||
         `会话 ${cascadeId.slice(0, 8)}`;
       const archived = Boolean(item.annotations && item.annotations.archived);
-      if (archived) continue;
+      if (archived) {
+        this._pendingBlankConversations.delete(cascadeId);
+        continue;
+      }
 
       const workspaces = item.workspaces || [];
-      const firstWsUri = workspaces[0] && workspaces[0].workspaceFolderAbsoluteUri;
+      const firstWsUri =
+        (workspaces[0] && workspaces[0].workspaceFolderAbsoluteUri) ||
+        (pendingMeta && pendingMeta.workspaceUri) ||
+        '';
       const workspacePath = firstWsUri ? decodeURIComponent(firstWsUri.replace(/^file:\/\//, '')) : '';
       const projectName = workspacePath ? path.basename(workspacePath) : '全局对话 (Scratch)';
 
@@ -167,6 +177,37 @@ class AntigravityRpcClient {
         projectsMap.set(projectName, {
           name: projectName,
           workspaceUri: firstWsUri || '',
+          workspacePath,
+          conversations: []
+        });
+      }
+      projectsMap.get(projectName).conversations.push(convo);
+    }
+
+    // 补充刚创建但尚未发送首条消息的空会话，确保新建命名后立即出现在工作区会话列表中
+    for (const [cascadeId, pendingMeta] of this._pendingBlankConversations.entries()) {
+      if (summaries[cascadeId]) continue;
+      const firstWsUri = pendingMeta.workspaceUri || '';
+      const workspacePath = firstWsUri ? decodeURIComponent(firstWsUri.replace(/^file:\/\//, '')) : '';
+      const projectName = workspacePath ? path.basename(workspacePath) : '全局对话 (Scratch)';
+      const convo = {
+        id: cascadeId,
+        trajectoryId: '',
+        title: pendingMeta.title || `新对话 ${cascadeId.slice(0, 6)}`,
+        projectName,
+        workspaceUri: firstWsUri,
+        workspacePath,
+        stepCount: 0,
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        isRunning: false,
+        createdAt: pendingMeta.createdAt || new Date().toISOString(),
+        updatedAt: pendingMeta.createdAt || new Date().toISOString()
+      };
+      conversations.push(convo);
+      if (!projectsMap.has(projectName)) {
+        projectsMap.set(projectName, {
+          name: projectName,
+          workspaceUri: firstWsUri,
           workspacePath,
           conversations: []
         });
@@ -805,11 +846,25 @@ class AntigravityRpcClient {
     };
   }
 
+  _mapPermissionModeToPolicy(permissionMode = '') {
+    const mode = String(permissionMode || '').trim().toLowerCase();
+    if (mode === 'review' || mode === 'off' || mode === 'disabled') {
+      return 'CASCADE_COMMANDS_AUTO_EXECUTION_OFF';
+    }
+    if (mode === 'auto') {
+      return 'CASCADE_COMMANDS_AUTO_EXECUTION_AUTO';
+    }
+    if (mode === 'turbo' || mode === 'eager') {
+      return 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER';
+    }
+    return '';
+  }
+
   /**
    * 从目标会话历史步骤中提取最近一次有效的 userConfig 与 userAgentSpec，
    * 若会话刚创建尚无历史步骤，则回退使用标准完整配置模板。
    */
-  async _resolveCascadeConfigAndAgentSpec(cascadeId, requestedModel = '') {
+  async _resolveCascadeConfigAndAgentSpec(cascadeId, requestedModel = '', permissionMode = '') {
     let baseConfig = null;
     let baseAgentSpec = null;
     try {
@@ -841,6 +896,20 @@ class AntigravityRpcClient {
       baseConfig.plannerConfig.planModel = requestedModel.trim();
     } else if (!baseConfig.plannerConfig.planModel) {
       baseConfig.plannerConfig.planModel = 'MODEL_PLACEHOLDER_M418';
+    }
+
+    const mappedPolicy = this._mapPermissionModeToPolicy(permissionMode);
+    if (mappedPolicy) {
+      if (!baseConfig.plannerConfig.toolConfig) {
+        baseConfig.plannerConfig.toolConfig = { notifyUser: {} };
+      }
+      if (!baseConfig.plannerConfig.toolConfig.runCommand) {
+        baseConfig.plannerConfig.toolConfig.runCommand = {};
+      }
+      if (!baseConfig.plannerConfig.toolConfig.runCommand.autoCommandConfig) {
+        baseConfig.plannerConfig.toolConfig.runCommand.autoCommandConfig = {};
+      }
+      baseConfig.plannerConfig.toolConfig.runCommand.autoCommandConfig.autoExecutionPolicy = mappedPolicy;
     }
 
     if (!baseAgentSpec) {
@@ -940,7 +1009,7 @@ class AntigravityRpcClient {
   /**
    * 立即向 language_server 派发消息（内部底层方法，支持图片与视频附件）
    */
-  async _dispatchMessageNow({ cascadeId, text, model, media, artifactApprovalUri }) {
+  async _dispatchMessageNow({ cascadeId, text, model, media, artifactApprovalUri, permissionMode }) {
     this._dispatchingSet.add(cascadeId);
     this._lastDispatchTime.set(cascadeId, Date.now());
     const rawCleanText = (text || '').trim();
@@ -951,7 +1020,11 @@ class AntigravityRpcClient {
       });
     }
     try {
-      const { cascadeConfig, customAgentSpec } = await this._resolveCascadeConfigAndAgentSpec(cascadeId, model);
+      const { cascadeConfig, customAgentSpec } = await this._resolveCascadeConfigAndAgentSpec(
+        cascadeId,
+        model,
+        permissionMode
+      );
       const { protoMedia, savedPaths } = this._prepareUploadedMedia(cascadeId, media);
 
       const payload = {
@@ -1004,6 +1077,13 @@ class AntigravityRpcClient {
       if (pendingEntry) {
         pendingEntry.dispatchedAt = Date.now();
       }
+      // 若该会话是新建时预设了自定义名称的空会话，在首条消息落盘后同步持久化标题注解
+      const pendingBlank = this._pendingBlankConversations.get(cascadeId);
+      if (pendingBlank && pendingBlank.title) {
+        try {
+          await this.renameConversation(cascadeId, pendingBlank.title);
+        } catch (_) {}
+      }
       return { queued: false, queuedMessages: this.getQueuedMessages(cascadeId), rpcRes };
     } finally {
       this._dispatchingSet.delete(cascadeId);
@@ -1013,14 +1093,21 @@ class AntigravityRpcClient {
   /**
    * 向现有对话发送用户消息（支持自动排队与图片/视频上传，避免多条消息重叠打断）
    */
-  async sendMessage({ cascadeId, text, model, media, artifactApprovalUri, queueIfBusy = true }) {
+  async sendMessage({ cascadeId, text, model, media, artifactApprovalUri, queueIfBusy = true, permissionMode = '' }) {
     if (!cascadeId) throw new Error('缺少 cascadeId');
 
     const hasMedia = Array.isArray(media) && media.length > 0;
 
     // Artifact 审批或强制立即发送时直接派发
     if (artifactApprovalUri || queueIfBusy === false) {
-      return await this._dispatchMessageNow({ cascadeId, text, model, media, artifactApprovalUri });
+      return await this._dispatchMessageNow({
+        cascadeId,
+        text,
+        model,
+        media,
+        artifactApprovalUri,
+        permissionMode
+      });
     }
 
     const cleanText = (text || '').trim();
@@ -1034,6 +1121,7 @@ class AntigravityRpcClient {
         id: `q-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         text: cleanText || (hasMedia ? `[已附带 ${media.length} 个媒体文件]` : ''),
         model: model || '',
+        permissionMode: permissionMode || '',
         media: hasMedia ? media : undefined,
         createdAt: new Date().toISOString()
       };
@@ -1046,7 +1134,7 @@ class AntigravityRpcClient {
       };
     }
 
-    return await this._dispatchMessageNow({ cascadeId, text: cleanText, model, media });
+    return await this._dispatchMessageNow({ cascadeId, text: cleanText, model, media, permissionMode });
   }
 
   /**
@@ -1067,7 +1155,8 @@ class AntigravityRpcClient {
             cascadeId,
             text: nextItem.text,
             model: nextItem.model,
-            media: nextItem.media
+            media: nextItem.media,
+            permissionMode: nextItem.permissionMode
           });
         } catch (err) {
           console.error(`[QueueProcessor] 自动派发排队消息失败 (${cascadeId}):`, err.message);
@@ -1122,25 +1211,46 @@ class AntigravityRpcClient {
   }
 
   /**
-   * 创建新对话并可选立即发送首条消息
+   * 创建新对话：支持仅设置对话名称（不作为消息发送），或同时发送首条消息
    */
-  async startConversation({ workspaceUri, text, model, media }) {
+  async startConversation({ workspaceUri, title, text, model, media, permissionMode }) {
     const startPayload = {
       source: 'CORTEX_TRAJECTORY_SOURCE_CASCADE_CLIENT',
       trajectoryType: 'CORTEX_TRAJECTORY_TYPE_CASCADE'
     };
+    let normalizedWsUri = '';
     if (workspaceUri) {
-      const uri = workspaceUri.startsWith('file://') ? workspaceUri : `file://${workspaceUri}`;
-      startPayload.workspaceUris = [uri];
+      normalizedWsUri = workspaceUri.startsWith('file://') ? workspaceUri : `file://${workspaceUri}`;
+      startPayload.workspaceUris = [normalizedWsUri];
     }
 
     const res = await this.callRpc('StartCascade', startPayload);
     const cascadeId = res && res.cascadeId;
+    const cleanTitle = String(title || '').trim();
+    if (cascadeId) {
+      this._pendingBlankConversations.set(cascadeId, {
+        id: cascadeId,
+        title: cleanTitle || `新对话 ${cascadeId.slice(0, 6)}`,
+        workspaceUri: normalizedWsUri,
+        createdAt: new Date().toISOString()
+      });
+      if (cleanTitle) {
+        try {
+          await this.renameConversation(cascadeId, cleanTitle);
+        } catch (_) {}
+      }
+    }
     const hasMedia = Array.isArray(media) && media.length > 0;
     if (cascadeId && ((text && text.trim()) || hasMedia)) {
-      await this.sendMessage({ cascadeId, text: (text || '').trim(), model, media });
+      await this.sendMessage({
+        cascadeId,
+        text: (text || '').trim(),
+        model,
+        media,
+        permissionMode
+      });
     }
-    return { cascadeId, ...res };
+    return { cascadeId, title: cleanTitle, ...res };
   }
 
   /**

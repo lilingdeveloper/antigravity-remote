@@ -250,13 +250,15 @@ public struct MainRemoteView: View {
                     } message: {
                         Text(pairToastMessage ?? "")
                     }
-                    .alert("在当前工作区新建对话", isPresented: $showNewChatAlert) {
-                        TextField("输入新对话的首条指令...", text: $newChatPrompt)
+                    .alert("新建对话", isPresented: $showNewChatAlert) {
+                        TextField("输入新对话名称（可选）...", text: $newChatPrompt)
                         Button("取消", role: .cancel) { newChatPrompt = "" }
-                        Button("创建并发送") {
-                            let prompt = newChatPrompt
+                        Button("创建") {
+                            let title = newChatPrompt
                             newChatPrompt = ""
-                            Task { await client.startNewConversation(prompt: prompt) }
+                            Task {
+                                await client.createNewBlankConversation(title: title)
+                            }
                         }
                     } message: {
                         Text("工作区: \(currentProjectSubtitle)")
@@ -1719,99 +1721,192 @@ public struct MainRemoteView: View {
         return fallback
     }
 
-    // MARK: - 远程权限审批 / Proceed / 多选题卡片
+    // MARK: - 极简排版级远程权限确认 / 方案确认 / 多选题卡片 (无 Emoji)
 
     @ViewBuilder
     private func approvalCard(_ pending: PendingInteractionItem) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Image(systemName: "bolt.shield.fill")
-                    .foregroundStyle(.orange)
-                Text(L(pending.title ?? "需要您的远程确认"))
-                    .font(.subheadline.weight(.bold))
-                Spacer()
-            }
+        VStack(alignment: .leading, spacing: 14) {
+            if pending.kind == "ask_question", let questions = pending.questions, !questions.isEmpty {
+                ForEach(Array(questions.enumerated()), id: \.offset) { _, q in
+                    VStack(alignment: .leading, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L("请选择一项以继续"))
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundStyle(.secondary)
 
-            if pending.kind == "artifact_approval" {
-                Text(pending.summary ?? "请审查生成的实现方案")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                            Text(q.question ?? "")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        VStack(spacing: 8) {
+                            ForEach(Array((q.options ?? []).enumerated()), id: \.element.optionId) { idx, opt in
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    Task {
+                                        await client.respondToInteraction(
+                                            pending,
+                                            allow: true,
+                                            selectedOptionId: opt.id ?? opt.text
+                                        )
+                                    }
+                                } label: {
+                                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                        Text("\(idx + 1).")
+                                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 20, alignment: .leading)
+
+                                        Text(opt.text ?? "")
+                                            .font(.system(size: 14, weight: .regular))
+                                            .foregroundStyle(.primary)
+                                            .lineSpacing(2.5)
+                                            .multilineTextAlignment(.leading)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 11, weight: .medium))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 12)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(Color(uiColor: .tertiarySystemBackground))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                    )
+                                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            } else if pending.kind == "artifact_approval" {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(L(pending.title ?? "方案确认"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(pending.summary ?? "请审阅实现方案后决定是否继续")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(2)
+                }
+
                 HStack(spacing: 10) {
                     Button {
-                        Task { await client.respondToInteraction(pending, allow: true) }
-                    } label: {
-                        Text(L("批准方案并继续 (Proceed)"))
-                            .font(.callout.weight(.semibold))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
-
-                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         selectedTab = 2
                     } label: {
-                        Text("查看方案")
-                            .font(.callout)
-                    }
-                    .buttonStyle(.bordered)
-                }
-            } else if pending.kind == "ask_question", let q = pending.questions?.first {
-                Text(q.question ?? "")
-                    .font(.callout.weight(.medium))
-                ForEach(q.options ?? [], id: \.optionId) { opt in
-                    Button {
-                        Task {
-                            await client.respondToInteraction(
-                                pending,
-                                allow: true,
-                                selectedOptionId: opt.id ?? opt.text
+                        Text(L("查看方案"))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(uiColor: .tertiarySystemBackground))
                             )
-                        }
-                    } label: {
-                        Text(opt.text ?? "")
-                            .font(.caption)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
                     }
-                    .buttonStyle(.borderedProminent)
-                }
-            } else {
-                if let code = pending.commandLine ?? pending.pathUri ?? pending.reason, !code.isEmpty {
-                    Text(code)
-                        .font(.caption.monospaced())
-                        .padding(8)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
-                }
-                HStack(spacing: 10) {
+                    .buttonStyle(.plain)
+
                     Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         Task { await client.respondToInteraction(pending, allow: true) }
                     } label: {
-                        Text(L("批准执行 (Approve)"))
-                            .font(.callout.weight(.semibold))
+                        Text(L("批准并继续"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color.blue)
+                            )
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.green)
+                    .buttonStyle(.plain)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L(pending.title ?? "需要操作确认"))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
 
-                    Button(role: .destructive) {
+                    if let code = pending.commandLine ?? pending.pathUri ?? pending.reason, !code.isEmpty {
+                        Text(code)
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(uiColor: .tertiarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+                            )
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task { await client.respondToInteraction(pending, allow: false) }
                     } label: {
-                        Text(L("拒绝 (Reject)"))
-                            .font(.callout.weight(.semibold))
+                        Text(L("拒绝"))
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color(uiColor: .tertiarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
                     }
-                    .buttonStyle(.bordered)
+                    .buttonStyle(.plain)
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        Task { await client.respondToInteraction(pending, allow: true) }
+                    } label: {
+                        Text(L("允许执行"))
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color.blue)
+                            )
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        .padding(12)
+        .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(uiColor: .secondarySystemBackground))
-                .shadow(color: .black.opacity(0.12), radius: 8, y: -2)
+                .shadow(color: .black.opacity(0.10), radius: 10, y: 2)
                 .overlay(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(Color.orange, lineWidth: 1.5)
+                        .stroke(Color.primary.opacity(0.10), lineWidth: 1)
                 )
         )
     }
@@ -1967,11 +2062,11 @@ public struct MainRemoteView: View {
             .font(.system(size: 15.5))
             .lineLimit(1...6)
             .padding(.horizontal, 14)
-            .padding(.top, (!pendingAttachments.isEmpty || isLoadingMedia) ? 2 : 13)
-            .padding(.bottom, 2)
+            .padding(.top, (!pendingAttachments.isEmpty || isLoadingMedia) ? 2 : 14)
+            .padding(.bottom, 10)
 
-            // 第二行：左侧「+ 添加媒体/附件」+「模型切换器」，右侧圆形发送/排队按钮
-            HStack(spacing: 12) {
+            // 第二行：左侧「+ 添加媒体/附件」+「模型切换器」+「权限模式（审核/自动/Turbo）」，整体贴近输入框底部边缘
+            HStack(spacing: 10) {
                 PhotosPicker(
                     selection: $selectedPhotoItems,
                     maxSelectionCount: 6,
@@ -1980,9 +2075,9 @@ public struct MainRemoteView: View {
                 ) {
                     ZStack(alignment: .topTrailing) {
                         Image(systemName: "plus")
-                            .font(.system(size: 17, weight: .medium))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
+                            .frame(width: 26, height: 26)
                             .contentShape(Rectangle())
 
                         if !pendingAttachments.isEmpty {
@@ -2008,21 +2103,21 @@ public struct MainRemoteView: View {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showModelPickerSheet = true
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Text(modelParts.baseName)
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 13.5, weight: .medium))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
 
                         if let tier = modelParts.tier, !tier.isEmpty {
                             Text(tier)
-                                .font(.system(size: 14, weight: .regular))
+                                .font(.system(size: 13.5, weight: .regular))
                                 .foregroundStyle(.tertiary)
                                 .lineLimit(1)
                         }
 
                         Image(systemName: "chevron.up")
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 9, weight: .semibold))
                             .foregroundStyle(.tertiary)
                     }
                     .padding(.vertical, 4)
@@ -2030,7 +2125,39 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                Spacer(minLength: 8)
+                // 权限模式选择器（审核 / 自动 / Turbo），紧挨模型选择右侧
+                Menu {
+                    ForEach(AgentPermissionMode.allCases) { mode in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            client.permissionMode = mode
+                        } label: {
+                            HStack {
+                                Text("\(mode.displayTitle) — \(mode.subtitle)")
+                                if client.permissionMode == mode {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(client.permissionMode.displayTitle)
+                            .font(.system(size: 13.5, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 4)
 
                 Button {
                     let text = inputText
@@ -2043,7 +2170,7 @@ public struct MainRemoteView: View {
                     Image(systemName: isQueueModeActive ? "clock.fill" : "arrow.right")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(canSend ? Color.white : Color.secondary.opacity(0.55))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 30, height: 30)
                         .background(
                             canSend
                                 ? (isQueueModeActive ? Color.orange : Color.blue)
@@ -2055,7 +2182,7 @@ public struct MainRemoteView: View {
                 .disabled(!canSend)
             }
             .padding(.horizontal, 12)
-            .padding(.bottom, 10)
+            .padding(.bottom, 5)
         }
         .background(
             RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -2519,7 +2646,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 13)")
+                LabeledContent("版本号", value: "1.0.0 (Build 14)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))

@@ -28,6 +28,30 @@ public enum RouteChannelKind: String {
     case probing = "正在智能选路..."
 }
 
+public enum AgentPermissionMode: String, CaseIterable, Identifiable {
+    case review = "review"
+    case auto = "auto"
+    case turbo = "turbo"
+
+    public var id: String { rawValue }
+
+    public var displayTitle: String {
+        switch self {
+        case .review: return "审核"
+        case .auto: return "自动"
+        case .turbo: return "Turbo"
+        }
+    }
+
+    public var subtitle: String {
+        switch self {
+        case .review: return "每次执行命令与敏感操作前均需手动确认"
+        case .auto: return "常规安全命令自动运行，高风险操作需确认"
+        case .turbo: return "全速自动执行所有命令与权限操作"
+        }
+    }
+}
+
 public struct PendingMediaAttachment: Identifiable, Equatable {
     public let id: String
     public let mimeType: String
@@ -156,6 +180,21 @@ public final class AntigravityClient: ObservableObject {
         return UserDefaults.standard.bool(forKey: "agy.enableNotifications")
     }() {
         didSet { UserDefaults.standard.set(enableNotifications, forKey: "agy.enableNotifications") }
+    }
+
+    /// 权限执行模式（审核 / 自动 / Turbo，默认自动）
+    @Published public var permissionMode: AgentPermissionMode = {
+        let raw = UserDefaults.standard.string(forKey: "agy.permissionMode") ?? "auto"
+        return AgentPermissionMode(rawValue: raw) ?? .auto
+    }() {
+        didSet {
+            UserDefaults.standard.set(permissionMode.rawValue, forKey: "agy.permissionMode")
+            if permissionMode == .turbo,
+               let pending = pendingInteraction,
+               pending.kind != "ask_question" && pending.kind != "artifact_approval" {
+                Task { await respondToInteraction(pending, allow: true) }
+            }
+        }
     }
 
     @Published public private(set) var messages: [ChatMessageItem] = []
@@ -1379,6 +1418,10 @@ public final class AntigravityClient: ObservableObject {
 
         if let pending = detail.pendingInteraction, pending.stepIndex != lastPendingStepIndex {
             lastPendingStepIndex = pending.stepIndex
+            if permissionMode == .turbo && pending.kind != "ask_question" && pending.kind != "artifact_approval" {
+                Task { await respondToInteraction(pending, allow: true) }
+                return
+            }
             UINotificationFeedbackGenerator().notificationOccurred(.warning)
         } else if detail.pendingInteraction == nil {
             lastPendingStepIndex = nil
@@ -1565,7 +1608,8 @@ public final class AntigravityClient: ObservableObject {
 
         var payload: [String: Any] = [
             "text": trimmed,
-            "queueIfBusy": queueMessagesWhenBusy
+            "queueIfBusy": queueMessagesWhenBusy,
+            "permissionMode": permissionMode.rawValue
         ]
         if !selectedModelId.isEmpty {
             payload["model"] = selectedModelId
@@ -1643,6 +1687,72 @@ public final class AntigravityClient: ObservableObject {
         }
     }
 
+    public func createNewBlankConversation(title: String, workspaceUri: String? = nil) async {
+        let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let targetWs = workspaceUri ?? currentWorkspaceUri
+
+        if isDemoMode {
+            let newId = "demo-convo-\(UUID().uuidString.prefix(6))"
+            let newConvo = ConversationSummary(
+                id: newId,
+                trajectoryId: "traj-\(newId)",
+                title: cleanTitle.isEmpty ? "新演示对话" : cleanTitle,
+                projectName: "AGY Remote iOS",
+                workspaceUri: targetWs,
+                workspacePath: "/Users/developer/AntigravityRemote",
+                stepCount: 0,
+                status: "CASCADE_RUN_STATUS_IDLE",
+                isRunning: false,
+                updatedAt: "刚刚"
+            )
+            conversations.insert(newConvo, at: 0)
+            if !projects.isEmpty {
+                projects[0].conversations.insert(newConvo, at: 0)
+            }
+            currentCascadeId = newId
+            messages = []
+            diffs = []
+            artifacts = []
+            return
+        }
+
+        struct StartResponse: Codable {
+            let ok: Bool?
+            let cascadeId: String?
+            let title: String?
+        }
+        var payload: [String: Any] = [
+            "title": cleanTitle,
+            "permissionMode": permissionMode.rawValue
+        ]
+        if !targetWs.isEmpty {
+            payload["workspaceUri"] = targetWs
+        }
+        if !selectedModelId.isEmpty {
+            payload["model"] = selectedModelId
+        }
+
+        if let res: StartResponse = try? await request(path: "/api/v1/conversations", method: "POST", body: payload),
+           let newId = res.cascadeId {
+            knownConversationIds.insert(newId)
+            currentCascadeId = newId
+            pendingOptimisticMessages.removeAll()
+            messages = []
+            queuedMessages = []
+            diffs = []
+            artifacts = []
+            pendingInteraction = nil
+            isGenerating = false
+            if !targetWs.isEmpty {
+                currentWorkspaceUri = targetWs
+                UserDefaults.standard.set(targetWs, forKey: "agy.currentWorkspaceUri")
+            }
+            UserDefaults.standard.set(newId, forKey: "agy.currentCascadeId")
+            ensureSSESubscription(cascadeId: newId)
+            await fetchConversations()
+        }
+    }
+
     public func startNewConversation(prompt: String, workspaceUri: String? = nil, attachments: [PendingMediaAttachment] = []) async {
         if isDemoMode {
             let newId = "demo-convo-\(UUID().uuidString.prefix(6))"
@@ -1671,7 +1781,10 @@ public final class AntigravityClient: ObservableObject {
             let cascadeId: String?
         }
         let targetWs = workspaceUri ?? currentWorkspaceUri
-        var payload: [String: Any] = ["text": prompt]
+        var payload: [String: Any] = [
+            "text": prompt,
+            "permissionMode": permissionMode.rawValue
+        ]
         if !targetWs.isEmpty {
             payload["workspaceUri"] = targetWs
         }
