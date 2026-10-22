@@ -2,9 +2,15 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { execFileSync } = require('child_process');
 const { AntigravityDiscovery } = require('./discovery');
 
-const BRAIN_DIR = path.join(os.homedir(), '.gemini', 'antigravity', 'brain');
+const ANTIGRAVITY_DIR = path.join(os.homedir(), '.gemini', 'antigravity');
+const BRAIN_DIR = path.join(ANTIGRAVITY_DIR, 'brain');
+const ANNOTATIONS_DIR = path.join(ANTIGRAVITY_DIR, 'annotations');
+const CONVERSATIONS_DIR = path.join(ANTIGRAVITY_DIR, 'conversations');
+const SUMMARIES_DB_PATH = path.join(ANTIGRAVITY_DIR, 'conversation_summaries.db');
+const PERSISTENT_CACHE_PATH = path.join(ANTIGRAVITY_DIR, 'remote-daemon-conversations-cache.json');
 
 class AntigravityRpcClient {
   constructor(discovery = new AntigravityDiscovery()) {
@@ -26,6 +32,338 @@ class AntigravityRpcClient {
     // 记录每个会话及全局最近已知的权限执行模式 ('review' | 'auto' | 'turbo')
     this._cascadePermissionModes = new Map();
     this._lastKnownPermissionMode = 'turbo';
+
+    // 本地持久化与多源历史索引缓存
+    this._annotationsCache = { checkedAt: 0, map: new Map() };
+    this._sqliteSummariesCache = { checkedAt: 0, dbMtimeMs: 0, walMtimeMs: 0, rootRows: new Map(), subtrajectoryIds: new Set() };
+    this._projectsMetaCache = { checkedAt: 0, map: new Map() };
+    this._brainScanCache = { checkedAt: 0, dirMtimeMs: 0, entries: new Map(), subtrajectoryIds: new Set() };
+    this._persistentCache = this._loadPersistentCache();
+  }
+
+  _loadPersistentCache() {
+    try {
+      if (fs.existsSync(PERSISTENT_CACHE_PATH)) {
+        const parsed = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_PATH, 'utf-8'));
+        if (parsed && typeof parsed === 'object') {
+          return {
+            updatedAt: parsed.updatedAt || '',
+            conversations: parsed.conversations && typeof parsed.conversations === 'object' ? parsed.conversations : {},
+            projects: parsed.projects && typeof parsed.projects === 'object' ? parsed.projects : {}
+          };
+        }
+      }
+    } catch (_) {}
+    return { updatedAt: '', conversations: {}, projects: {} };
+  }
+
+  _savePersistentCache() {
+    try {
+      this._persistentCache.updatedAt = new Date().toISOString();
+      fs.mkdirSync(path.dirname(PERSISTENT_CACHE_PATH), { recursive: true });
+      fs.writeFileSync(PERSISTENT_CACHE_PATH, JSON.stringify(this._persistentCache, null, 2), 'utf-8');
+    } catch (_) {}
+  }
+
+  _normalizeIsoTime(raw) {
+    if (!raw) return '';
+    const str = String(raw).trim();
+    if (!str || str.startsWith('0001-01-01')) return '';
+    const normalized = str.includes('T') ? str : str.replace(' ', 'T');
+    const ms = Date.parse(normalized);
+    if (!Number.isFinite(ms) || ms <= 0) return '';
+    return new Date(ms).toISOString();
+  }
+
+  _unescapePbtxtString(raw) {
+    if (!raw || typeof raw !== 'string') return '';
+    if (!raw.includes('\\')) return raw;
+    const bytes = [];
+    for (let i = 0; i < raw.length; i++) {
+      const ch = raw[i];
+      if (ch === '\\' && i + 1 < raw.length) {
+        const next = raw[i + 1];
+        if (next >= '0' && next <= '7') {
+          let oct = next;
+          i++;
+          if (i + 1 < raw.length && raw[i + 1] >= '0' && raw[i + 1] <= '7') {
+            oct += raw[++i];
+          }
+          if (i + 1 < raw.length && raw[i + 1] >= '0' && raw[i + 1] <= '7') {
+            oct += raw[++i];
+          }
+          bytes.push(parseInt(oct, 8) & 0xff);
+          continue;
+        }
+        i++;
+        if (next === 'n') bytes.push(10);
+        else if (next === 'r') bytes.push(13);
+        else if (next === 't') bytes.push(9);
+        else if (next === '"') bytes.push(34);
+        else if (next === '\\') bytes.push(92);
+        else {
+          const buf = Buffer.from(next, 'utf-8');
+          for (const b of buf) bytes.push(b);
+        }
+      } else {
+        const buf = Buffer.from(ch, 'utf-8');
+        for (const b of buf) bytes.push(b);
+      }
+    }
+    return Buffer.from(bytes).toString('utf-8');
+  }
+
+  /**
+   * 读取 ~/.gemini/antigravity/annotations/<cascadeId>.pbtxt 中的标题与归档状态
+   */
+  _readLocalAnnotationsMap(force = false) {
+    if (!force && Date.now() - this._annotationsCache.checkedAt < 1500 && this._annotationsCache.map.size > 0) {
+      return this._annotationsCache.map;
+    }
+    const map = new Map();
+    if (!fs.existsSync(ANNOTATIONS_DIR)) return map;
+    try {
+      const files = fs.readdirSync(ANNOTATIONS_DIR);
+      for (const f of files) {
+        if (!f.endsWith('.pbtxt')) continue;
+        const cascadeId = f.slice(0, -6);
+        try {
+          const txt = fs.readFileSync(path.join(ANNOTATIONS_DIR, f), 'utf-8');
+          const archivedTrue = /\barchived\s*:\s*true\b/.test(txt);
+          const archivedFalse = /\barchived\s*:\s*false\b/.test(txt);
+          const titleMatch = txt.match(/\btitle\s*:\s*"((?:[^"\\]|\\.)*)"/);
+          const title = titleMatch ? this._unescapePbtxtString(titleMatch[1]).trim() : '';
+          map.set(cascadeId, {
+            title,
+            archived: archivedTrue ? true : (archivedFalse ? false : false),
+            hasArchivedField: archivedTrue || archivedFalse
+          });
+        } catch (_) {}
+      }
+      this._annotationsCache = { checkedAt: Date.now(), map };
+    } catch (_) {}
+    return map;
+  }
+
+  /**
+   * 读取 ~/.gemini/antigravity/conversation_summaries.db 中持久化的历史会话索引
+   * 即使电脑端 Antigravity IDE 重启后内存仅加载了 1 个会话，也能毫秒级恢复全部历史会话与工作区归属
+   */
+  _readSqliteSummaries() {
+    if (!fs.existsSync(SUMMARIES_DB_PATH)) {
+      return { rootRows: new Map(), subtrajectoryIds: new Set() };
+    }
+    try {
+      const dbStat = fs.statSync(SUMMARIES_DB_PATH);
+      const walPath = `${SUMMARIES_DB_PATH}-wal`;
+      const walStat = fs.existsSync(walPath) ? fs.statSync(walPath) : null;
+      const dbMtimeMs = dbStat.mtimeMs;
+      const walMtimeMs = walStat ? walStat.mtimeMs : 0;
+
+      if (
+        Date.now() - this._sqliteSummariesCache.checkedAt < 3000 &&
+        this._sqliteSummariesCache.dbMtimeMs === dbMtimeMs &&
+        this._sqliteSummariesCache.walMtimeMs === walMtimeMs &&
+        this._sqliteSummariesCache.rootRows.size > 0
+      ) {
+        return {
+          rootRows: this._sqliteSummariesCache.rootRows,
+          subtrajectoryIds: this._sqliteSummariesCache.subtrajectoryIds
+        };
+      }
+
+      const sql = [
+        'SELECT conversation_id, title, preview, step_count, last_modified_time,',
+        'workspace_uris, status, project_id, parent_conversation_id, nesting_depth, killed',
+        'FROM conversation_summaries ORDER BY last_modified_time DESC;'
+      ].join(' ');
+
+      const out = execFileSync('sqlite3', ['-json', SUMMARIES_DB_PATH, sql], {
+        encoding: 'utf-8',
+        timeout: 3000,
+        stdio: ['ignore', 'pipe', 'ignore']
+      });
+      const rows = out && out.trim() ? JSON.parse(out) : [];
+      const rootRows = new Map();
+      const subtrajectoryIds = new Set();
+
+      for (const r of rows) {
+        const cid = r && r.conversation_id;
+        if (!cid) continue;
+        const depth = Number(r.nesting_depth || 0);
+        const parentId = String(r.parent_conversation_id || '').trim();
+        if (depth > 0 || parentId) {
+          subtrajectoryIds.add(cid);
+          continue;
+        }
+        rootRows.set(cid, r);
+      }
+
+      this._sqliteSummariesCache = {
+        checkedAt: Date.now(),
+        dbMtimeMs,
+        walMtimeMs,
+        rootRows,
+        subtrajectoryIds
+      };
+      return { rootRows, subtrajectoryIds };
+    } catch (_) {
+      return {
+        rootRows: this._sqliteSummariesCache.rootRows || new Map(),
+        subtrajectoryIds: this._sqliteSummariesCache.subtrajectoryIds || new Set()
+      };
+    }
+  }
+
+  /**
+   * 获取 ListProjects + ReadProjects 的项目元数据映射: projectId -> { id, name, workspaceUri, workspacePath }
+   */
+  async _getProjectsMetadataMap() {
+    if (Date.now() - this._projectsMetaCache.checkedAt < 15000 && this._projectsMetaCache.map.size > 0) {
+      return this._projectsMetaCache.map;
+    }
+    const map = new Map();
+    try {
+      const lp = await this.callRpc('ListProjects', {});
+      const ids = (lp && Array.isArray(lp.projectIds) ? lp.projectIds : []).filter(Boolean);
+      if (ids.length > 0) {
+        const rp = await this.callRpc('ReadProjects', { ids });
+        const projects = (rp && Array.isArray(rp.projects) ? rp.projects : []);
+        for (const p of projects) {
+          if (!p || !p.id) continue;
+          const resources = (p.projectResources && Array.isArray(p.projectResources.resources))
+            ? p.projectResources.resources
+            : [];
+          let folderUri = '';
+          for (const resItem of resources) {
+            if (resItem && resItem.folderUri) {
+              folderUri = resItem.folderUri;
+              break;
+            }
+            if (resItem && resItem.gitFolder && resItem.gitFolder.folderUri) {
+              folderUri = resItem.gitFolder.folderUri;
+              break;
+            }
+          }
+          const workspacePath = folderUri ? decodeURIComponent(folderUri.replace(/^file:\/\//, '')) : '';
+          map.set(p.id, {
+            id: p.id,
+            name: p.name || (workspacePath ? path.basename(workspacePath) : ''),
+            workspaceUri: folderUri || '',
+            workspacePath
+          });
+        }
+      }
+      if (map.size > 0) {
+        this._projectsMetaCache = { checkedAt: Date.now(), map };
+      }
+    } catch (_) {}
+    return this._projectsMetaCache.map;
+  }
+
+  _hasLocalConversationData(cascadeId) {
+    if (!cascadeId || !/^[a-f0-9-]+$/i.test(cascadeId)) return false;
+    const dbFile = path.join(CONVERSATIONS_DIR, `${cascadeId}.db`);
+    if (fs.existsSync(dbFile)) return true;
+    const brainFolder = path.join(BRAIN_DIR, cascadeId);
+    if (fs.existsSync(brainFolder)) return true;
+    return false;
+  }
+
+  /**
+   * 扫描 ~/.gemini/antigravity/brain/<cascadeId>/.system_generated/logs/transcript.jsonl 作为兜底补充数据源
+   */
+  _scanBrainConversations(subtrajectoryIds = new Set()) {
+    if (!fs.existsSync(BRAIN_DIR)) return new Map();
+    try {
+      const dirStat = fs.statSync(BRAIN_DIR);
+      if (
+        Date.now() - this._brainScanCache.checkedAt < 10000 &&
+        this._brainScanCache.dirMtimeMs === dirStat.mtimeMs &&
+        this._brainScanCache.entries.size > 0
+      ) {
+        return this._brainScanCache.entries;
+      }
+
+      const entries = new Map();
+      const folders = fs.readdirSync(BRAIN_DIR);
+      for (const cascadeId of folders) {
+        if (!/^[a-f0-9-]{20,}$/i.test(cascadeId)) continue;
+        if (subtrajectoryIds.has(cascadeId) || this._brainScanCache.subtrajectoryIds.has(cascadeId)) continue;
+
+        const logsDir = path.join(BRAIN_DIR, cascadeId, '.system_generated', 'logs');
+        const transcriptPath = path.join(logsDir, 'transcript.jsonl');
+        if (!fs.existsSync(transcriptPath)) continue;
+
+        try {
+          const stat = fs.statSync(transcriptPath);
+          const content = fs.readFileSync(transcriptPath, 'utf-8');
+          if (content.includes('<subagent_reminder>')) {
+            this._brainScanCache.subtrajectoryIds.add(cascadeId);
+            continue;
+          }
+          const lines = content.split('\n');
+          let stepCount = 0;
+          let firstUserText = '';
+          let workspacePath = '';
+          let createdAt = '';
+          let updatedAt = '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const obj = JSON.parse(line);
+              if (typeof obj.step_index === 'number' && obj.step_index + 1 > stepCount) {
+                stepCount = obj.step_index + 1;
+              }
+              if (!createdAt && obj.created_at) createdAt = obj.created_at;
+              if (obj.created_at) updatedAt = obj.created_at;
+
+              if (!workspacePath && typeof obj.content === 'string') {
+                const wsMatch = obj.content.match(/Active Workspaces:\s*\n-\s*([^\n\r]+)/);
+                if (wsMatch && wsMatch[1]) {
+                  workspacePath = wsMatch[1].trim();
+                }
+              }
+
+              if (!firstUserText && obj.type === 'USER_INPUT' && typeof obj.content === 'string') {
+                if (obj.content.includes('[Message] timestamp=') && obj.content.includes('sender=')) {
+                  this._brainScanCache.subtrajectoryIds.add(cascadeId);
+                  firstUserText = '__SUBAGENT__';
+                  break;
+                }
+                const cleaned = this._cleanUserTags(obj.content);
+                if (cleaned && !cleaned.startsWith('<SYSTEM_MESSAGE>')) {
+                  firstUserText = cleaned.split('\n')[0].slice(0, 48).trim();
+                }
+              }
+            } catch (_) {}
+          }
+
+          if (firstUserText === '__SUBAGENT__') continue;
+          const workspaceUri = workspacePath ? `file://${encodeURI(workspacePath)}` : '';
+          entries.set(cascadeId, {
+            id: cascadeId,
+            title: firstUserText || '',
+            workspaceUri,
+            workspacePath,
+            stepCount,
+            createdAt: this._normalizeIsoTime(createdAt) || stat.birthtime.toISOString(),
+            updatedAt: this._normalizeIsoTime(updatedAt) || stat.mtime.toISOString()
+          });
+        } catch (_) {}
+      }
+
+      this._brainScanCache = {
+        checkedAt: Date.now(),
+        dirMtimeMs: dirStat.mtimeMs,
+        entries,
+        subtrajectoryIds: this._brainScanCache.subtrajectoryIds
+      };
+      return entries;
+    } catch (_) {
+      return new Map();
+    }
   }
 
   /**
@@ -104,31 +442,123 @@ class AntigravityRpcClient {
 
   /**
    * 获取所有项目与对话列表（按项目分组，并按最后修改时间倒序排列）
+   * 融合多数据源：
+   * 1. language_server 实时内存态 (GetAllCascadeTrajectories)
+   * 2. 本地 SQLite 历史索引 (~/.gemini/antigravity/conversation_summaries.db) + 注解 (~/.gemini/antigravity/annotations/*.pbtxt)
+   * 3. 项目元数据映射 (ListProjects / ReadProjects)
+   * 4. 本地 brain 目录日志 (~/.gemini/antigravity/brain/<id>/.system_generated/logs/transcript.jsonl) 与守护进程持久化缓存
    */
   async listConversations() {
-    const res = await this.callRpc('GetAllCascadeTrajectories', { excludeSubtrajectories: true });
-    const summaries = (res && res.trajectorySummaries) || {};
+    let summaries = {};
+    try {
+      const res = await this.callRpc('GetAllCascadeTrajectories', { excludeSubtrajectories: true });
+      summaries = (res && res.trajectorySummaries) || {};
+    } catch (_) {
+      summaries = {};
+    }
+
+    const annotationsMap = this._readLocalAnnotationsMap();
+    const { rootRows, subtrajectoryIds } = this._readSqliteSummaries();
+    const projectsMetaMap = await this._getProjectsMetadataMap();
+    const brainEntries = this._scanBrainConversations(subtrajectoryIds);
 
     const conversations = [];
     const projectsMap = new Map();
+    const processedIds = new Set();
+    const nextCachedConvos = {};
+    const nextCachedProjects = { ...(this._persistentCache.projects || {}) };
 
+    const addConvo = (convo) => {
+      processedIds.add(convo.id);
+      conversations.push(convo);
+      if (!projectsMap.has(convo.projectName)) {
+        projectsMap.set(convo.projectName, {
+          name: convo.projectName,
+          workspaceUri: convo.workspaceUri || '',
+          workspacePath: convo.workspacePath || '',
+          conversations: []
+        });
+      }
+      projectsMap.get(convo.projectName).conversations.push(convo);
+
+      nextCachedConvos[convo.id] = {
+        id: convo.id,
+        trajectoryId: convo.trajectoryId || '',
+        title: convo.title,
+        projectName: convo.projectName,
+        workspaceUri: convo.workspaceUri || '',
+        workspacePath: convo.workspacePath || '',
+        stepCount: convo.stepCount || 0,
+        createdAt: convo.createdAt || '',
+        updatedAt: convo.updatedAt || '',
+        archived: false
+      };
+      if (convo.projectName) {
+        nextCachedProjects[convo.projectName] = {
+          name: convo.projectName,
+          workspaceUri: convo.workspaceUri || '',
+          workspacePath: convo.workspacePath || ''
+        };
+      }
+    };
+
+    const parseFirstWsUriFromSqlRow = (sqlRow) => {
+      if (!sqlRow) return '';
+      if (sqlRow.workspace_uris) {
+        try {
+          const parsed = JSON.parse(sqlRow.workspace_uris);
+          if (Array.isArray(parsed) && parsed[0]) return String(parsed[0]);
+        } catch (_) {}
+      }
+      if (sqlRow.project_id && projectsMetaMap.has(sqlRow.project_id)) {
+        return projectsMetaMap.get(sqlRow.project_id).workspaceUri || '';
+      }
+      return '';
+    };
+
+    // 1. 处理当前已加载在 language_server 内存中的活跃会话
     for (const [cascadeId, item] of Object.entries(summaries)) {
+      if (subtrajectoryIds.has(cascadeId) || this._brainScanCache.subtrajectoryIds.has(cascadeId)) {
+        continue;
+      }
       const pendingMeta = this._pendingBlankConversations.get(cascadeId);
-      const title =
-        (item.annotations && item.annotations.title) ||
-        (pendingMeta && pendingMeta.title) ||
-        item.summary ||
-        `会话 ${cascadeId.slice(0, 8)}`;
-      const archived = Boolean(item.annotations && item.annotations.archived);
+      const ann = annotationsMap.get(cascadeId);
+      const sqlRow = rootRows.get(cascadeId);
+      const cachedConvo = this._persistentCache.conversations && this._persistentCache.conversations[cascadeId];
+      const brainEntry = brainEntries.get(cascadeId);
+
+      const archived =
+        Boolean(item.annotations && item.annotations.archived) ||
+        Boolean(ann && ann.archived);
       if (archived) {
         this._pendingBlankConversations.delete(cascadeId);
         continue;
       }
 
+      const title =
+        (item.annotations && item.annotations.title) ||
+        (ann && ann.title) ||
+        (pendingMeta && pendingMeta.title) ||
+        item.summary ||
+        (sqlRow && sqlRow.title) ||
+        (cachedConvo && cachedConvo.title) ||
+        (brainEntry && brainEntry.title) ||
+        `会话 ${cascadeId.slice(0, 8)}`;
+
       const workspaces = item.workspaces || [];
+      const metaWsUris =
+        (item.trajectoryMetadata && Array.isArray(item.trajectoryMetadata.workspaceUris))
+          ? item.trajectoryMetadata.workspaceUris
+          : [];
+      const metaProjectId = (item.trajectoryMetadata && item.trajectoryMetadata.projectId) || '';
       const firstWsUri =
         (workspaces[0] && workspaces[0].workspaceFolderAbsoluteUri) ||
+        metaWsUris[0] ||
+        (metaProjectId && projectsMetaMap.get(metaProjectId)?.workspaceUri) ||
+        parseFirstWsUriFromSqlRow(sqlRow) ||
         (pendingMeta && pendingMeta.workspaceUri) ||
+        (cachedConvo && cachedConvo.workspaceUri) ||
+        (brainEntry && brainEntry.workspaceUri) ||
         '';
       const workspacePath = firstWsUri ? decodeURIComponent(firstWsUri.replace(/^file:\/\//, '')) : '';
       const projectName = workspacePath ? path.basename(workspacePath) : '全局对话 (Scratch)';
@@ -161,39 +591,159 @@ class AntigravityRpcClient {
         }
       }
 
-      const convo = {
+      const createdAt =
+        this._normalizeIsoTime(item.createdTime) ||
+        (cachedConvo && cachedConvo.createdAt) ||
+        (brainEntry && brainEntry.createdAt) ||
+        this._normalizeIsoTime(item.lastModifiedTime) ||
+        '';
+      const updatedAt =
+        this._normalizeIsoTime(item.lastModifiedTime) ||
+        (sqlRow && this._normalizeIsoTime(sqlRow.last_modified_time)) ||
+        createdAt;
+
+      addConvo({
         id: cascadeId,
-        trajectoryId: item.trajectoryId || '',
+        trajectoryId: item.trajectoryId || (cachedConvo && cachedConvo.trajectoryId) || '',
         title,
         projectName,
         workspaceUri: firstWsUri || '',
         workspacePath,
-        stepCount: item.stepCount || 0,
+        stepCount: item.stepCount || (sqlRow && Number(sqlRow.step_count)) || 0,
         status: statusRaw,
         isRunning,
-        createdAt: item.createdTime || '',
-        updatedAt: item.lastModifiedTime || item.createdTime || ''
-      };
-
-      conversations.push(convo);
-      if (!projectsMap.has(projectName)) {
-        projectsMap.set(projectName, {
-          name: projectName,
-          workspaceUri: firstWsUri || '',
-          workspacePath,
-          conversations: []
-        });
-      }
-      projectsMap.get(projectName).conversations.push(convo);
+        createdAt,
+        updatedAt
+      });
     }
 
-    // 补充刚创建但尚未发送首条消息的空会话，确保新建命名后立即出现在工作区会话列表中
+    // 2. 合并本地 SQLite 历史索引 (conversation_summaries.db) 中尚未加载进 language_server 内存的会话
+    for (const [cascadeId, sqlRow] of rootRows.entries()) {
+      if (processedIds.has(cascadeId)) continue;
+      if (subtrajectoryIds.has(cascadeId) || this._brainScanCache.subtrajectoryIds.has(cascadeId)) continue;
+
+      const ann = annotationsMap.get(cascadeId);
+      if (ann && ann.archived) {
+        this._pendingBlankConversations.delete(cascadeId);
+        continue;
+      }
+      if (!this._hasLocalConversationData(cascadeId) && !this._pendingBlankConversations.has(cascadeId)) {
+        continue;
+      }
+
+      const pendingMeta = this._pendingBlankConversations.get(cascadeId);
+      const cachedConvo = this._persistentCache.conversations && this._persistentCache.conversations[cascadeId];
+      const brainEntry = brainEntries.get(cascadeId);
+
+      const stepCount = Number(sqlRow.step_count || (cachedConvo && cachedConvo.stepCount) || (brainEntry && brainEntry.stepCount) || 0);
+      const updatedAt =
+        this._normalizeIsoTime(sqlRow.last_modified_time) ||
+        (cachedConvo && cachedConvo.updatedAt) ||
+        (brainEntry && brainEntry.updatedAt) ||
+        '';
+      if (stepCount === 0 && !updatedAt && !pendingMeta) {
+        continue;
+      }
+
+      const firstWsUri =
+        parseFirstWsUriFromSqlRow(sqlRow) ||
+        (pendingMeta && pendingMeta.workspaceUri) ||
+        (cachedConvo && cachedConvo.workspaceUri) ||
+        (brainEntry && brainEntry.workspaceUri) ||
+        '';
+      const workspacePath = firstWsUri ? decodeURIComponent(firstWsUri.replace(/^file:\/\//, '')) : '';
+      const projectName = workspacePath ? path.basename(workspacePath) : '全局对话 (Scratch)';
+
+      const previewLine = sqlRow.preview ? String(sqlRow.preview).split('\n')[0].slice(0, 48).trim() : '';
+      const title =
+        (ann && ann.title) ||
+        (sqlRow.title && String(sqlRow.title).trim()) ||
+        (pendingMeta && pendingMeta.title) ||
+        (cachedConvo && cachedConvo.title) ||
+        (brainEntry && brainEntry.title) ||
+        previewLine ||
+        `会话 ${cascadeId.slice(0, 8)}`;
+
+      const createdAt =
+        (cachedConvo && cachedConvo.createdAt) ||
+        (brainEntry && brainEntry.createdAt) ||
+        updatedAt;
+
+      addConvo({
+        id: cascadeId,
+        trajectoryId: (cachedConvo && cachedConvo.trajectoryId) || '',
+        title,
+        projectName,
+        workspaceUri: firstWsUri,
+        workspacePath,
+        stepCount,
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        isRunning: false,
+        createdAt,
+        updatedAt
+      });
+    }
+
+    // 3. 合并持久化缓存与本地 brain 目录中存在的其他非归档主会话
+    const fallbackIds = new Set([
+      ...Object.keys(this._persistentCache.conversations || {}),
+      ...Array.from(brainEntries.keys())
+    ]);
+    for (const cascadeId of fallbackIds) {
+      if (processedIds.has(cascadeId)) continue;
+      if (subtrajectoryIds.has(cascadeId) || this._brainScanCache.subtrajectoryIds.has(cascadeId)) continue;
+      const ann = annotationsMap.get(cascadeId);
+      if (ann && ann.archived) continue;
+      if (!this._hasLocalConversationData(cascadeId)) continue;
+
+      const cachedConvo = this._persistentCache.conversations && this._persistentCache.conversations[cascadeId];
+      const brainEntry = brainEntries.get(cascadeId);
+      const stepCount = Number((cachedConvo && cachedConvo.stepCount) || (brainEntry && brainEntry.stepCount) || 0);
+      if (stepCount === 0 && !this._pendingBlankConversations.has(cascadeId)) continue;
+
+      const firstWsUri =
+        (cachedConvo && cachedConvo.workspaceUri) ||
+        (brainEntry && brainEntry.workspaceUri) ||
+        '';
+      const workspacePath = firstWsUri ? decodeURIComponent(firstWsUri.replace(/^file:\/\//, '')) : '';
+      const projectName = workspacePath ? path.basename(workspacePath) : '全局对话 (Scratch)';
+      const title =
+        (ann && ann.title) ||
+        (cachedConvo && cachedConvo.title) ||
+        (brainEntry && brainEntry.title) ||
+        `会话 ${cascadeId.slice(0, 8)}`;
+      const updatedAt =
+        (cachedConvo && this._normalizeIsoTime(cachedConvo.updatedAt)) ||
+        (brainEntry && this._normalizeIsoTime(brainEntry.updatedAt)) ||
+        '';
+      const createdAt =
+        (cachedConvo && this._normalizeIsoTime(cachedConvo.createdAt)) ||
+        (brainEntry && this._normalizeIsoTime(brainEntry.createdAt)) ||
+        updatedAt;
+
+      addConvo({
+        id: cascadeId,
+        trajectoryId: (cachedConvo && cachedConvo.trajectoryId) || '',
+        title,
+        projectName,
+        workspaceUri: firstWsUri,
+        workspacePath,
+        stepCount,
+        status: 'CASCADE_RUN_STATUS_IDLE',
+        isRunning: false,
+        createdAt,
+        updatedAt
+      });
+    }
+
+    // 4. 补充刚创建但尚未发送首条消息的空会话，确保新建命名后立即出现在工作区会话列表中
     for (const [cascadeId, pendingMeta] of this._pendingBlankConversations.entries()) {
-      if (summaries[cascadeId]) continue;
+      if (processedIds.has(cascadeId)) continue;
       const firstWsUri = pendingMeta.workspaceUri || '';
       const workspacePath = firstWsUri ? decodeURIComponent(firstWsUri.replace(/^file:\/\//, '')) : '';
       const projectName = workspacePath ? path.basename(workspacePath) : '全局对话 (Scratch)';
-      const convo = {
+      const nowIso = this._normalizeIsoTime(pendingMeta.createdAt) || new Date().toISOString();
+      addConvo({
         id: cascadeId,
         trajectoryId: '',
         title: pendingMeta.title || `新对话 ${cascadeId.slice(0, 6)}`,
@@ -203,19 +753,19 @@ class AntigravityRpcClient {
         stepCount: 0,
         status: 'CASCADE_RUN_STATUS_IDLE',
         isRunning: false,
-        createdAt: pendingMeta.createdAt || new Date().toISOString(),
-        updatedAt: pendingMeta.createdAt || new Date().toISOString()
-      };
-      conversations.push(convo);
-      if (!projectsMap.has(projectName)) {
-        projectsMap.set(projectName, {
-          name: projectName,
-          workspaceUri: firstWsUri,
-          workspacePath,
-          conversations: []
-        });
-      }
-      projectsMap.get(projectName).conversations.push(convo);
+        createdAt: nowIso,
+        updatedAt: nowIso
+      });
+    }
+
+    // 更新并持久化本地会话缓存
+    const prevConvoCount = Object.keys(this._persistentCache.conversations || {}).length;
+    const nextConvoCount = Object.keys(nextCachedConvos).length;
+    this._persistentCache.conversations = nextCachedConvos;
+    this._persistentCache.projects = nextCachedProjects;
+    if (prevConvoCount !== nextConvoCount || !this._lastCacheSaveAt || Date.now() - this._lastCacheSaveAt > 10000) {
+      this._lastCacheSaveAt = Date.now();
+      this._savePersistentCache();
     }
 
     conversations.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
@@ -234,9 +784,16 @@ class AntigravityRpcClient {
 
   /**
    * 获取单个对话的完整结构化消息流、思考过程、工具调用与待审批交互 (pendingInteraction)
+   * 若会话尚未加载进 language_server 内存，调用 GetCascadeTrajectory 会自动触发从 conversations/<id>.db 按需加载；
+   * 若 RPC 获取失败或无步骤，则自动从本地 brain/<id>/.system_generated/logs/transcript.jsonl 完整恢复历史消息。
    */
   async getConversationDetail(cascadeId) {
-    const res = await this.callRpc('GetCascadeTrajectory', { cascadeId });
+    let res = {};
+    try {
+      res = await this.callRpc('GetCascadeTrajectory', { cascadeId });
+    } catch (_) {
+      res = {};
+    }
     const trajectory = (res && res.trajectory) || {};
     const rawSteps = trajectory.steps || [];
     const trajectoryId = trajectory.trajectoryId || '';
@@ -435,6 +992,82 @@ class AntigravityRpcClient {
       }
     }
 
+    // 兜底：若 GetCascadeTrajectory 返回空步骤但本地存在 transcript.jsonl，直接从本地日志恢复完整历史消息流
+    if (rawSteps.length === 0 && transcriptMap.size > 0) {
+      const sortedIndices = Array.from(transcriptMap.keys()).sort((a, b) => a - b);
+      for (const idx of sortedIndices) {
+        const tStep = transcriptMap.get(idx);
+        if (!tStep) continue;
+        const tType = String(tStep.type || '').toUpperCase();
+        const createdAt = tStep.created_at || '';
+
+        if (tType === 'USER_INPUT') {
+          let text = this._cleanUserTags(tStep.content || '');
+          if (text.startsWith('<SYSTEM_MESSAGE>')) continue;
+          const rawMedia = Array.isArray(tStep.media) ? tStep.media : [];
+          if (rawMedia.length > 0) {
+            const mediaLabels = rawMedia.map((m) => {
+              const mime = (m.mimeType || m.mime_type || '').toLowerCase();
+              const desc = m.description || path.basename(m.uri || '') || '媒体文件';
+              return mime.startsWith('video/') ? `🎬 [视频: ${desc}]` : `🖼️ [图片: ${desc}]`;
+            });
+            const badgeLine = mediaLabels.join('  ');
+            text = text ? `${badgeLine}\n${text}` : badgeLine;
+          }
+          if (text) {
+            messages.push({
+              id: `step-${idx}`,
+              stepIndex: idx,
+              role: 'user',
+              slashCommand: null,
+              text,
+              createdAt,
+              status: 'CORTEX_STEP_STATUS_DONE'
+            });
+          }
+        } else if (tType === 'PLANNER_RESPONSE') {
+          const thinking = tStep.thinking || '';
+          const text = tStep.content || '';
+          const toolCalls = Array.isArray(tStep.tool_calls) ? tStep.tool_calls : [];
+          if (thinking || text) {
+            messages.push({
+              id: `step-${idx}`,
+              stepIndex: idx,
+              role: 'assistant',
+              thinking,
+              text,
+              model: activeModel || '',
+              createdAt,
+              status: 'CORTEX_STEP_STATUS_DONE',
+              isGenerating: false
+            });
+          }
+          for (let ti = 0; ti < toolCalls.length; ti++) {
+            const tc = toolCalls[ti] || {};
+            const tcName = tc.name || tc.tool_name || '';
+            if (!tcName) continue;
+            let tcArgs = tc.arguments || tc.args || {};
+            if (typeof tcArgs === 'string') {
+              try {
+                tcArgs = JSON.parse(tcArgs);
+              } catch (_) {
+                tcArgs = {};
+              }
+            }
+            messages.push({
+              id: `step-${idx}-tool-${ti}`,
+              stepIndex: idx,
+              role: 'tool',
+              toolName: tcName,
+              summary: this._summarizeToolCall(tcName, tcArgs),
+              status: 'CORTEX_STEP_STATUS_DONE',
+              createdAt
+            });
+          }
+        }
+      }
+    }
+
     const recentDispatched = this._recentDispatchedUserMessages.get(cascadeId);
     if (recentDispatched) {
       if (Date.now() - recentDispatched.dispatchedAt > 10000) {
@@ -575,7 +1208,7 @@ class AntigravityRpcClient {
       trajectoryId,
       status: resolvedStatus,
       isGenerating,
-      stepCount: rawSteps.length,
+      stepCount: rawSteps.length || transcriptMap.size,
       activeModel,
       activePermissionMode,
       contextUsage,
@@ -1400,29 +2033,69 @@ class AntigravityRpcClient {
   }
 
   /**
-   * 重命名指定对话 (同步更新电脑端 Antigravity 的 ConversationAnnotations.title)
+   * 重命名指定对话 (同步更新电脑端 Antigravity 的 ConversationAnnotations.title 与本地持久化缓存)
    */
   async renameConversation(cascadeId, title) {
     if (!cascadeId) throw new Error('缺少 cascadeId');
     const cleanTitle = String(title || '').trim();
     if (!cleanTitle) throw new Error('标题不能为空');
-    return await this.callRpc('UpdateConversationAnnotations', {
-      cascadeId,
-      annotations: { title: cleanTitle },
-      mergeAnnotations: true
-    });
+    const pendingBlank = this._pendingBlankConversations.get(cascadeId);
+    if (pendingBlank) {
+      pendingBlank.title = cleanTitle;
+    }
+    if (this._persistentCache.conversations && this._persistentCache.conversations[cascadeId]) {
+      this._persistentCache.conversations[cascadeId].title = cleanTitle;
+      this._savePersistentCache();
+    }
+    let res;
+    try {
+      res = await this.callRpc('UpdateConversationAnnotations', {
+        cascadeId,
+        annotations: { title: cleanTitle },
+        mergeAnnotations: true
+      });
+    } catch (err) {
+      // 若该历史会话尚未加载进 language_server 内存，先触发 GetCascadeTrajectory 加载再更新注解
+      await this.callRpc('GetCascadeTrajectory', { cascadeId }).catch(() => {});
+      res = await this.callRpc('UpdateConversationAnnotations', {
+        cascadeId,
+        annotations: { title: cleanTitle },
+        mergeAnnotations: true
+      });
+    }
+    this._annotationsCache.checkedAt = 0;
+    return res;
   }
 
   /**
-   * 归档/取消归档指定对话 (同步更新电脑端 Antigravity 的 ConversationAnnotations.archived)
+   * 归档/取消归档指定对话 (同步更新电脑端 Antigravity 的 ConversationAnnotations.archived 与本地持久化缓存)
    */
   async archiveConversation(cascadeId, archived = true) {
     if (!cascadeId) throw new Error('缺少 cascadeId');
-    return await this.callRpc('UpdateConversationAnnotations', {
-      cascadeId,
-      annotations: { archived: Boolean(archived) },
-      mergeAnnotations: true
-    });
+    if (archived) {
+      this._pendingBlankConversations.delete(cascadeId);
+      if (this._persistentCache.conversations && this._persistentCache.conversations[cascadeId]) {
+        delete this._persistentCache.conversations[cascadeId];
+        this._savePersistentCache();
+      }
+    }
+    let res;
+    try {
+      res = await this.callRpc('UpdateConversationAnnotations', {
+        cascadeId,
+        annotations: { archived: Boolean(archived) },
+        mergeAnnotations: true
+      });
+    } catch (err) {
+      await this.callRpc('GetCascadeTrajectory', { cascadeId }).catch(() => {});
+      res = await this.callRpc('UpdateConversationAnnotations', {
+        cascadeId,
+        annotations: { archived: Boolean(archived) },
+        mergeAnnotations: true
+      });
+    }
+    this._annotationsCache.checkedAt = 0;
+    return res;
   }
 
   /**

@@ -315,7 +315,7 @@ public enum DemoModeData {
             ChatMessageItem(
                 id: "step-2",
                 stepIndex: 2,
-                role: "assistant",
+                role: "tool",
                 thinking: nil,
                 text: nil,
                 toolName: "read_file",
@@ -327,11 +327,11 @@ public enum DemoModeData {
             ChatMessageItem(
                 id: "step-3",
                 stepIndex: 3,
-                role: "assistant",
+                role: "tool",
                 thinking: nil,
                 text: nil,
                 toolName: "edit_file",
-                summary: isZh ? "优化 SSE 事件合并缓冲池与状态同步管道" : "Optimize SSE batching buffer and synchronization pipeline",
+                summary: isZh ? "修改文件 Services/StreamEngine.swift" : "Edited Services/StreamEngine.swift",
                 model: "gemini-3.1-pro",
                 status: "CORTEX_STEP_STATUS_DONE",
                 isGenerating: false
@@ -339,7 +339,7 @@ public enum DemoModeData {
             ChatMessageItem(
                 id: "step-4",
                 stepIndex: 4,
-                role: "assistant",
+                role: "tool",
                 thinking: nil,
                 text: nil,
                 toolName: "run_command",

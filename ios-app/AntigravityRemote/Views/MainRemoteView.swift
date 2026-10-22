@@ -3565,12 +3565,12 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 20)")
+                LabeledContent("版本号", value: "1.0.0 (Build 21)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))
             } footer: {
-                Text("\(L("如有任何问题，请联系邮箱")) \("liling" + ".developer@gmail.com")")
+                Text("\(L("技术支持与反馈")): github.com/lilingdeveloper/antigravity-remote")
                     .font(.caption2)
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.vertical, 8)

@@ -20,12 +20,12 @@ class AntigravityDiscovery {
       const psOut = execSync('ps ax -o pid=,command=', { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] });
       const lines = psOut.split('\n');
 
-      let lsLine = null;
+      const lsCandidates = [];
       let mainAppPid = null;
 
       for (const line of lines) {
         if (line.includes('language_server') && line.includes('--csrf_token')) {
-          lsLine = line.trim();
+          lsCandidates.push(line.trim());
         } else if (
           line.includes('/Applications/Antigravity.app/Contents/MacOS/Antigravity') &&
           !line.includes('Antigravity Helper')
@@ -34,32 +34,45 @@ class AntigravityDiscovery {
         }
       }
 
-      if (!lsLine) {
+      if (lsCandidates.length === 0) {
         return null;
       }
 
-      const pid = parseInt(lsLine.split(/\s+/)[0], 10);
-      const csrfMatch = lsLine.match(/--csrf_token\s+([a-f0-9-]+)/i);
+      // 若存在多个候选进程，优先选择有监听端口的最新进程
+      let selected = null;
+      for (let i = lsCandidates.length - 1; i >= 0; i--) {
+        const candidateLine = lsCandidates[i];
+        const candidatePid = parseInt(candidateLine.split(/\s+/)[0], 10);
+        const csrfMatch = candidateLine.match(/--csrf_token\s+([a-f0-9-]+)/i);
+        const csrfToken = csrfMatch ? csrfMatch[1] : null;
+        if (!candidatePid || !csrfToken) continue;
+
+        try {
+          const lsofOut = execSync(`lsof -Pan -p ${candidatePid} -iTCP -sTCP:LISTEN`, {
+            encoding: 'utf-8',
+            stdio: ['ignore', 'pipe', 'ignore']
+          });
+          const ports = [];
+          for (const m of lsofOut.matchAll(/127\.0\.0\.1:(\d+)\s+\(LISTEN\)/g)) {
+            const p = parseInt(m[1], 10);
+            if (!ports.includes(p)) ports.push(p);
+          }
+          ports.sort((a, b) => a - b);
+          if (ports.length > 0) {
+            selected = { lsLine: candidateLine, pid: candidatePid, csrfToken, ports };
+            break;
+          }
+        } catch (_) {}
+      }
+
+      if (!selected) {
+        return null;
+      }
+
+      const { lsLine, pid, csrfToken, ports } = selected;
       const hostBridgeUrlMatch = lsLine.match(/--host_bridge_url=(\S+)/i);
       const hostBridgeTokenMatch = lsLine.match(/--host_bridge_token=(\S+)/i);
       const versionMatch = lsLine.match(/--override_ide_version\s+(\S+)/i);
-
-      const csrfToken = csrfMatch ? csrfMatch[1] : null;
-      if (!pid || !csrfToken) {
-        return null;
-      }
-
-      // 通过 lsof 获取 language_server 监听的本地 TCP 端口
-      const lsofOut = execSync(`lsof -Pan -p ${pid} -iTCP -sTCP:LISTEN`, {
-        encoding: 'utf-8',
-        stdio: ['ignore', 'pipe', 'ignore']
-      });
-      const ports = [];
-      for (const m of lsofOut.matchAll(/127\.0\.0\.1:(\d+)\s+\(LISTEN\)/g)) {
-        const p = parseInt(m[1], 10);
-        if (!ports.includes(p)) ports.push(p);
-      }
-      ports.sort((a, b) => a - b);
 
       // 通常较小端口为 HTTPS (如 53692)，较大端口为 HTTP (如 53693)
       const httpsPort = ports[0] || null;

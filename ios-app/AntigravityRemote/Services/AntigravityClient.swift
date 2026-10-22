@@ -1579,7 +1579,7 @@ public final class AntigravityClient: ObservableObject {
                 let toolMsg = ChatMessageItem(
                     id: "demo-tool-\(UUID().uuidString)",
                     stepIndex: self.messages.count,
-                    role: "assistant",
+                    role: "tool",
                     thinking: nil,
                     text: nil,
                     toolName: isTest ? "run_command" : "read_file",
