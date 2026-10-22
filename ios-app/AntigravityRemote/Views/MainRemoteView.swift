@@ -30,6 +30,7 @@ public struct MainRemoteView: View {
     @State private var pendingAttachments: [PendingMediaAttachment] = []
     @State private var isLoadingMedia: Bool = false
     @State private var showConversationsSheet = false
+    @State private var showSettingsPageSheet = false
     @State private var showSettingsSheet = false
     @State private var showTailnetSheet = false
     @State private var showQRScannerSheet = false
@@ -37,6 +38,10 @@ public struct MainRemoteView: View {
     @State private var showMacSetupGuideSheet = false
     @State private var showPrivacyPolicySheet = false
     @State private var showOpenSourceLicensesSheet = false
+    @State private var showDiffsSheet = false
+    @State private var showArtifactsSheet = false
+    @State private var selectedDiffForCard: FileDiffItem?
+    @State private var selectedArtifactForCard: ArtifactItem?
     @State private var showNewChatAlert = false
     @State private var newChatPrompt = ""
     @State private var pairToastMessage: String?
@@ -66,32 +71,7 @@ public struct MainRemoteView: View {
                     VStack(spacing: 0) {
                         headerStatusBanner
 
-                        TabView(selection: $selectedTab) {
-                            chatPane
-                                .tag(0)
-                                .tabItem {
-                                    Label(L("远程对话"), systemImage: "bubble.left.and.bubble.right.fill")
-                                }
-
-                            diffsPane
-                                .tag(1)
-                                .tabItem {
-                                    Label("\(L("代码变更")) (\(client.diffs.count))", systemImage: "doc.badge.gearshape")
-                                }
-
-                            artifactsPane
-                                .tag(2)
-                                .tabItem {
-                                    Label("\(L("方案文档")) (\(client.artifacts.count))", systemImage: "doc.richtext")
-                                }
-
-                            settingsPane
-                                .tag(3)
-                                .tabItem {
-                                    Label(L("设置"), systemImage: "gearshape.fill")
-                                }
-                        }
-                        .hideTopScrollEdgeEffect()
+                        chatPane
                     }
                     .hideTopScrollEdgeEffect()
                     .background(TopScrollEdgeDisabler(selectedTab: selectedTab))
@@ -106,7 +86,7 @@ public struct MainRemoteView: View {
                                 }
                             } label: {
                                 Image(systemName: "sidebar.left")
-                                    .fontWeight(.semibold)
+                                    .font(.system(size: 16, weight: .semibold))
                             }
                         }
 
@@ -162,6 +142,74 @@ public struct MainRemoteView: View {
                                 .disabled(client.conversations.count <= 1)
                             }
                         }
+
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                isInputFocused = false
+                                showSettingsPageSheet = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .font(.system(size: 16, weight: .semibold))
+                            }
+                        }
+                    }
+                    .sheet(isPresented: $showSettingsPageSheet) {
+                        NavigationStack {
+                            settingsPane
+                                .navigationTitle(L("设置"))
+                                .navigationBarTitleDisplayMode(.inline)
+                                .toolbar {
+                                    ToolbarItem(placement: .confirmationAction) {
+                                        Button(L("完成")) {
+                                            showSettingsPageSheet = false
+                                        }
+                                    }
+                                }
+                        }
+                        .presentationDragIndicator(.visible)
+                    }
+                    .sheet(item: $selectedArtifactForCard) { artifact in
+                        artifactCardModalView(artifact)
+                            .presentationDetents([.medium, .large])
+                            .presentationDragIndicator(.visible)
+                    }
+                    .sheet(item: $selectedDiffForCard) { diff in
+                        diffCardModalView(diff)
+                            .presentationDetents([.medium, .large])
+                            .presentationDragIndicator(.visible)
+                    }
+                    .sheet(isPresented: $showArtifactsSheet) {
+                        NavigationStack {
+                            artifactsPane
+                                .navigationTitle(L("方案文档"))
+                                .navigationBarTitleDisplayMode(.inline)
+                                .toolbar {
+                                    ToolbarItem(placement: .confirmationAction) {
+                                        Button(L("完成")) {
+                                            showArtifactsSheet = false
+                                        }
+                                    }
+                                }
+                        }
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
+                    }
+                    .sheet(isPresented: $showDiffsSheet) {
+                        NavigationStack {
+                            diffsPane
+                                .navigationTitle(L("代码变更"))
+                                .navigationBarTitleDisplayMode(.inline)
+                                .toolbar {
+                                    ToolbarItem(placement: .confirmationAction) {
+                                        Button(L("完成")) {
+                                            showDiffsSheet = false
+                                        }
+                                    }
+                                }
+                        }
+                        .presentationDetents([.medium, .large])
+                        .presentationDragIndicator(.visible)
                     }
                     .sheet(isPresented: $showQRScannerSheet) {
                         QRScannerSheet { code in
@@ -403,26 +451,37 @@ public struct MainRemoteView: View {
     private func applyMarketingScene(_ scene: String) {
         switch scene.lowercased() {
         case "chat":
-            selectedTab = 0
             client.expandedThinkingIds.insert("step-1")
         case "approval":
-            selectedTab = 0
+            break
         case "diffs":
-            selectedTab = 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                if let first = client.diffs.first {
+                    selectedDiffForCard = first
+                } else {
+                    showDiffsSheet = true
+                }
+            }
         case "artifacts":
-            selectedTab = 2
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                if let first = client.artifacts.first {
+                    selectedArtifactForCard = first
+                } else {
+                    showArtifactsSheet = true
+                }
+            }
         case "sidebar":
-            selectedTab = 0
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 showConversationsSheet = true
             }
         case "models":
-            selectedTab = 0
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 showModelPickerSheet = true
             }
         case "settings":
-            selectedTab = 3
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                showSettingsPageSheet = true
+            }
         default:
             break
         }
@@ -562,9 +621,10 @@ public struct MainRemoteView: View {
             }
 
             HStack(spacing: 8) {
-                // 连接状态与实时延迟胶囊 (点击跳转到设置页)
+                // 连接状态与实时延迟胶囊 (点击弹出设置页)
                 Button {
-                    selectedTab = 3
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showSettingsPageSheet = true
                 } label: {
                     HStack(spacing: 5) {
                         Circle()
@@ -834,6 +894,10 @@ public struct MainRemoteView: View {
                                                 turnResponseItemRow(item)
                                                     .id(item.id)
                                             }
+                                            if idx == turns.count - 1 && (!client.artifacts.isEmpty || !client.diffs.isEmpty) {
+                                                inlineArtifactsAndDiffsSection
+                                                    .id("INLINE_DIFFS_ARTIFACTS")
+                                            }
                                             if idx == turns.count - 1 && shouldShowWorkingIndicator {
                                                 aiWorkingIndicatorRow
                                                     .id("AI_WORKING_INDICATOR")
@@ -857,6 +921,9 @@ public struct MainRemoteView: View {
                             .background(ChatScrollObserver(isAtBottom: $isChatAtBottom))
                         }
                     }
+                    .environment(\.openURL, OpenURLAction { url in
+                        handleChatLinkTap(url)
+                    })
                     .hideTopScrollEdgeEffect()
                     .scrollDismissesKeyboard(.interactively)
                     .refreshable {
@@ -1404,10 +1471,101 @@ public struct MainRemoteView: View {
         .background(Color.purple.opacity(0.09), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
+    private func extractTargetFileToken(from msg: ChatMessageItem) -> String {
+        let candidates = [msg.summary ?? "", msg.text ?? ""]
+        for raw in candidates where !raw.isEmpty {
+            for prefix in ["写入文件:", "修改文件:", "读取文件:", "write_file:", "edit_file:", "read_file:"] {
+                if let range = raw.range(of: prefix) {
+                    let tail = raw[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+                    let token = tail.split(whereSeparator: { $0.isWhitespace || $0 == "`" }).first.map(String.init) ?? tail
+                    if !token.isEmpty { return token }
+                }
+            }
+        }
+        return ""
+    }
+
+    private func matchedArtifactForTool(_ msg: ChatMessageItem) -> ArtifactItem? {
+        let name = msg.toolName ?? ""
+        let sum = msg.summary ?? ""
+        guard name == "write_file" || name == "edit_file" || sum.hasPrefix("写入文件") || sum.hasPrefix("修改文件") else {
+            return nil
+        }
+        let token = extractTargetFileToken(from: msg)
+        guard !token.isEmpty else { return nil }
+        let base = (token as NSString).lastPathComponent.lowercased()
+        return client.artifacts.first { art in
+            let artName = art.name.lowercased()
+            let artBase = ((art.filePath ?? "") as NSString).lastPathComponent.lowercased()
+            return artName == base || artBase == base || artName.contains(base)
+        }
+    }
+
+    private func matchedDiffForTool(_ msg: ChatMessageItem) -> FileDiffItem? {
+        let name = msg.toolName ?? ""
+        let sum = msg.summary ?? ""
+        guard name == "write_file" || name == "edit_file" || sum.hasPrefix("写入文件") || sum.hasPrefix("修改文件") else {
+            return nil
+        }
+        let token = extractTargetFileToken(from: msg)
+        guard !token.isEmpty else { return nil }
+        let base = (token as NSString).lastPathComponent.lowercased()
+        return client.diffs.first { diff in
+            diff.fileName.lowercased() == base || diff.filePath.lowercased().hasSuffix(base)
+        }
+    }
+
+    private func handleChatLinkTap(_ url: URL) -> OpenURLAction.Result {
+        if url.scheme == "file" {
+            let rawPath = url.path
+            let fileName = url.lastPathComponent.lowercased()
+            if !fileName.isEmpty {
+                if let art = client.artifacts.first(where: {
+                    $0.name.lowercased() == fileName ||
+                    (($0.filePath ?? "") as NSString).lastPathComponent.lowercased() == fileName ||
+                    ($0.filePath ?? "") == rawPath
+                }) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    selectedArtifactForCard = art
+                    return .handled
+                }
+                if let diff = client.diffs.first(where: {
+                    $0.fileName.lowercased() == fileName ||
+                    $0.filePath == rawPath ||
+                    $0.filePath.lowercased().hasSuffix(fileName)
+                }) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    selectedDiffForCard = diff
+                    return .handled
+                }
+                if fileName.hasSuffix(".md"), let firstArt = client.artifacts.first {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    selectedArtifactForCard = firstArt
+                    return .handled
+                }
+                if let firstDiff = client.diffs.first {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    selectedDiffForCard = firstDiff
+                    return .handled
+                }
+            }
+            return .discarded
+        }
+        return .systemAction
+    }
+
     private func toolExecutionPill(_ msg: ChatMessageItem) -> some View {
         let name = msg.toolName ?? ""
         let isExpanded = expandedToolIds.contains(msg.id)
+        let matchedArtifact = matchedArtifactForTool(msg)
+        let matchedDiff = (matchedArtifact == nil) ? matchedDiffForTool(msg) : nil
         let (icon, color): (String, Color) = {
+            if matchedArtifact != nil {
+                return ("doc.richtext.fill", .indigo)
+            }
+            if matchedDiff != nil {
+                return ("chevron.left.forwardslash.chevron.right", .orange)
+            }
             switch name {
             case "run_command", "manage_task":
                 return ("terminal.fill", .green)
@@ -1438,46 +1596,95 @@ public struct MainRemoteView: View {
         }()
 
         return VStack(alignment: .leading, spacing: 6) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    if isExpanded {
-                        expandedToolIds.remove(msg.id)
-                    } else {
-                        expandedToolIds.insert(msg.id)
+            HStack(spacing: 8) {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    if let art = matchedArtifact {
+                        selectedArtifactForCard = art
+                        return
                     }
+                    if let diff = matchedDiff {
+                        selectedDiffForCard = diff
+                        return
+                    }
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        if isExpanded {
+                            expandedToolIds.remove(msg.id)
+                        } else {
+                            expandedToolIds.insert(msg.id)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: icon)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(color)
+                            .frame(width: 22, height: 22)
+                            .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+
+                        Text(msg.summary ?? msg.toolName ?? "调用工具")
+                            .font(.caption.monospaced())
+                            .foregroundStyle(.primary)
+                            .lineLimit(isExpanded ? nil : 1)
+                            .multilineTextAlignment(.leading)
+
+                        Spacer(minLength: 0)
+
+                        if matchedArtifact != nil {
+                            HStack(spacing: 3) {
+                                Text(L("查看方案"))
+                                    .font(.system(size: 11, weight: .medium))
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                        } else if matchedDiff != nil {
+                            HStack(spacing: 3) {
+                                Text(L("查看变更"))
+                                    .font(.system(size: 11, weight: .medium))
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 9, weight: .semibold))
+                            }
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(Color.primary.opacity(0.06), in: Capsule())
+                        }
+
+                        if msg.status == "CORTEX_STEP_STATUS_RUNNING" {
+                            ProgressView()
+                                .controlSize(.mini)
+                        } else {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.green.opacity(0.75))
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(color)
-                        .frame(width: 22, height: 22)
-                        .background(color.opacity(0.14), in: RoundedRectangle(cornerRadius: 6))
+                .buttonStyle(.plain)
 
-                    Text(msg.summary ?? msg.toolName ?? "调用工具")
-                        .font(.caption.monospaced())
-                        .foregroundStyle(.primary)
-                        .lineLimit(isExpanded ? nil : 1)
-                        .multilineTextAlignment(.leading)
-
-                    Spacer(minLength: 0)
-
-                    if msg.status == "CORTEX_STEP_STATUS_RUNNING" {
-                        ProgressView()
-                            .controlSize(.mini)
-                    } else {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.green.opacity(0.75))
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        if isExpanded {
+                            expandedToolIds.remove(msg.id)
+                        } else {
+                            expandedToolIds.insert(msg.id)
+                        }
                     }
-
+                } label: {
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1524,6 +1731,498 @@ public struct MainRemoteView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .background(Color(uiColor: .secondarySystemBackground).opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // MARK: - 对话流内嵌「方案文档」与「代码变更」极简卡片（点击弹出卡片窗口）
+
+    private var inlineArtifactsAndDiffsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if !client.artifacts.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("\(L("方案文档")) (\(client.artifacts.count))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if client.artifacts.count > 1 {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showArtifactsSheet = true
+                            } label: {
+                                Text(L("全部"))
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    ForEach(client.artifacts) { art in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            selectedArtifactForCard = art
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "doc.text")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(art.name)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+
+                                    Text(artifactPreviewSnippet(art))
+                                        .font(.system(size: 12))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+
+                                Spacer(minLength: 8)
+
+                                HStack(spacing: 4) {
+                                    Text(L("查看"))
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(uiColor: .secondarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+
+            if !client.diffs.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("\(L("代码变更")) (\(client.diffs.count))")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        if client.diffs.count > 1 {
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                showDiffsSheet = true
+                            } label: {
+                                Text(L("全部"))
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    ForEach(client.diffs) { diff in
+                        let stats = computeDiffLineStats(diff)
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            selectedDiffForCard = diff
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "chevron.left.forwardslash.chevron.right")
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(diff.fileName)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+
+                                    if !diff.filePath.isEmpty {
+                                        Text(diff.filePath)
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+
+                                Spacer(minLength: 8)
+
+                                HStack(spacing: 6) {
+                                    if stats.added > 0 {
+                                        Text("+\(stats.added)")
+                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(.green)
+                                    }
+                                    if stats.removed > 0 {
+                                        Text("-\(stats.removed)")
+                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                            .foregroundStyle(.red)
+                                    }
+                                    Image(systemName: "chevron.right")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color(uiColor: .secondarySystemBackground))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                            )
+                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func artifactPreviewSnippet(_ art: ArtifactItem) -> String {
+        guard let raw = art.content, !raw.isEmpty else {
+            return art.filePath ?? L("点击以卡片窗口查看文档")
+        }
+        for line in raw.split(separator: "\n") {
+            let clean = line
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "#", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            if !clean.isEmpty && !clean.hasPrefix("---") && !clean.hasPrefix("```") {
+                return clean
+            }
+        }
+        return art.filePath ?? L("点击以卡片窗口查看文档")
+    }
+
+    private func computeDiffLineStats(_ diff: FileDiffItem) -> (added: Int, removed: Int) {
+        let orig = (diff.originalContent ?? "")
+        let mod = (diff.modifiedContent ?? "")
+        if orig.isEmpty && mod.isEmpty { return (0, 0) }
+        let origLines = orig.isEmpty ? [] : orig.components(separatedBy: "\n")
+        let modLines = mod.isEmpty ? [] : mod.components(separatedBy: "\n")
+        if origLines.isEmpty {
+            return (modLines.count, 0)
+        }
+        if origLines.count + modLines.count <= 1200 {
+            let diffResult = modLines.difference(from: origLines)
+            var addCount = 0
+            var remCount = 0
+            for change in diffResult {
+                switch change {
+                case .insert: addCount += 1
+                case .remove: remCount += 1
+                }
+            }
+            return (addCount, remCount)
+        }
+        let delta = modLines.count - origLines.count
+        return delta >= 0 ? (max(1, delta), 0) : (0, abs(delta))
+    }
+
+    // MARK: - 方案文档与代码变更弹窗卡片视图 (Card Sheet Windows)
+
+    @ViewBuilder
+    private func artifactCardModalView(_ artifact: ArtifactItem) -> some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                if client.artifacts.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(client.artifacts) { item in
+                                let isSelected = (item.id == artifact.id)
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    selectedArtifactForCard = item
+                                } label: {
+                                    Text(item.name)
+                                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                                        .foregroundStyle(isSelected ? .primary : .secondary)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(isSelected ? Color(uiColor: .tertiarySystemFill) : Color.clear)
+                                        )
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(Color.primary.opacity(isSelected ? 0.14 : 0.06), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    }
+                    Divider()
+                }
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if let path = artifact.filePath, !path.isEmpty {
+                            Text(path)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        if let content = artifact.content, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                            formattedAssistantBody(msgId: "card-art-\(artifact.id)", text: content)
+                                .lineSpacing(4)
+                                .textSelection(.enabled)
+                        } else {
+                            Text(L("（暂无可预览的文本内容）"))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 24)
+                        }
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                if let pending = client.pendingInteraction, pending.kind == "artifact_approval" {
+                    Divider()
+                    HStack(spacing: 12) {
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            selectedArtifactForCard = nil
+                            Task { await client.respondToInteraction(pending, allow: true) }
+                        } label: {
+                            Text(L("批准方案并继续"))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(Color.blue)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(14)
+                    .background(Color(uiColor: .secondarySystemBackground))
+                }
+            }
+            .navigationTitle(artifact.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIPasteboard.general.string = artifact.content ?? ""
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } label: {
+                        Text(L("复制"))
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("完成")) {
+                        selectedArtifactForCard = nil
+                    }
+                }
+            }
+        }
+    }
+
+    private struct DiffDisplayLine: Identifiable {
+        let id: Int
+        let prefix: String
+        let text: String
+        let kind: Int // 0 = context, 1 = added, -1 = removed
+    }
+
+    private func buildDiffDisplayLines(_ diff: FileDiffItem) -> [DiffDisplayLine] {
+        let orig = diff.originalContent ?? ""
+        let mod = diff.modifiedContent ?? ""
+        let origLines = orig.isEmpty ? [] : orig.components(separatedBy: "\n")
+        let modLines = mod.isEmpty ? [] : mod.components(separatedBy: "\n")
+
+        if !origLines.isEmpty && origLines != modLines && (origLines.count + modLines.count <= 1200) {
+            let difference = modLines.difference(from: origLines)
+            var removedOffsets = Set<Int>()
+            var insertedByOffset: [Int: [String]] = [:]
+            for change in difference {
+                switch change {
+                case let .remove(offset, _, _):
+                    removedOffsets.insert(offset)
+                case let .insert(offset, element, _):
+                    insertedByOffset[offset, default: []].append(element)
+                }
+            }
+            var result: [DiffDisplayLine] = []
+            var nextId = 0
+            var modIdx = 0
+            for origIdx in 0..<origLines.count {
+                while let insList = insertedByOffset[modIdx] {
+                    for line in insList {
+                        result.append(DiffDisplayLine(id: nextId, prefix: "+", text: line, kind: 1))
+                        nextId += 1
+                        modIdx += 1
+                    }
+                }
+                if removedOffsets.contains(origIdx) {
+                    result.append(DiffDisplayLine(id: nextId, prefix: "-", text: origLines[origIdx], kind: -1))
+                    nextId += 1
+                } else {
+                    result.append(DiffDisplayLine(id: nextId, prefix: " ", text: origLines[origIdx], kind: 0))
+                    nextId += 1
+                    modIdx += 1
+                }
+            }
+            while modIdx < modLines.count {
+                if let insList = insertedByOffset[modIdx] {
+                    for line in insList {
+                        result.append(DiffDisplayLine(id: nextId, prefix: "+", text: line, kind: 1))
+                        nextId += 1
+                        modIdx += 1
+                    }
+                } else {
+                    result.append(DiffDisplayLine(id: nextId, prefix: "+", text: modLines[modIdx], kind: 1))
+                    nextId += 1
+                    modIdx += 1
+                }
+            }
+            return Array(result.prefix(600))
+        }
+
+        return Array(modLines.prefix(600).enumerated().map { idx, line in
+            DiffDisplayLine(id: idx, prefix: "\(idx + 1)", text: line, kind: 0)
+        })
+    }
+
+    @ViewBuilder
+    private func diffCardModalView(_ diff: FileDiffItem) -> some View {
+        let stats = computeDiffLineStats(diff)
+        let lines = buildDiffDisplayLines(diff)
+
+        NavigationStack {
+            VStack(spacing: 0) {
+                if client.diffs.count > 1 {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(client.diffs) { item in
+                                let isSelected = (item.id == diff.id)
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    selectedDiffForCard = item
+                                } label: {
+                                    Text(item.fileName)
+                                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                                        .foregroundStyle(isSelected ? .primary : .secondary)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(
+                                            Capsule()
+                                                .fill(isSelected ? Color(uiColor: .tertiarySystemFill) : Color.clear)
+                                        )
+                                        .overlay(
+                                            Capsule()
+                                                .stroke(Color.primary.opacity(isSelected ? 0.14 : 0.06), lineWidth: 1)
+                                        )
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    }
+                    Divider()
+                }
+
+                HStack(spacing: 8) {
+                    Text(diff.filePath)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Spacer()
+
+                    if stats.added > 0 {
+                        Text("+\(stats.added)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.green)
+                    }
+                    if stats.removed > 0 {
+                        Text("-\(stats.removed)")
+                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.red)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(Color(uiColor: .secondarySystemBackground))
+
+                Divider()
+
+                ScrollView([.vertical, .horizontal]) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(lines) { line in
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text(line.prefix)
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .foregroundStyle(
+                                        line.kind == 1 ? Color.green :
+                                        (line.kind == -1 ? Color.red : Color.secondary.opacity(0.6))
+                                    )
+                                    .frame(width: 24, alignment: .trailing)
+
+                                Text(line.text.isEmpty ? " " : line.text)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .foregroundStyle(
+                                        line.kind == 1 ? Color.green :
+                                        (line.kind == -1 ? Color.red : Color.primary)
+                                    )
+                                    .textSelection(.enabled)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                line.kind == 1 ? Color.green.opacity(0.10) :
+                                (line.kind == -1 ? Color.red.opacity(0.10) : Color.clear)
+                            )
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+            }
+            .navigationTitle(diff.fileName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        UIPasteboard.general.string = diff.modifiedContent ?? ""
+                        UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    } label: {
+                        Text(L("复制"))
+                            .font(.system(size: 14, weight: .medium))
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(L("完成")) {
+                        selectedDiffForCard = nil
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - 结构化解析文本与代码块 (带 NSCache 高性能缓存)
@@ -1802,7 +2501,11 @@ public struct MainRemoteView: View {
                 HStack(spacing: 10) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        selectedTab = 2
+                        if let first = client.artifacts.first {
+                            selectedArtifactForCard = first
+                        } else {
+                            showArtifactsSheet = true
+                        }
                     } label: {
                         Text(L("查看方案"))
                             .font(.system(size: 13, weight: .medium))
@@ -2464,7 +3167,18 @@ public struct MainRemoteView: View {
         }
     }
 
-    // MARK: - Tab 4: 底部「设置」主页面 (含思考过程展示、读取文件展示、Tailscale 登录与连接配置)
+    // MARK: - 右上角「设置」弹窗页面 (含思考过程展示、读取文件展示、Tailscale 登录与连接配置)
+
+    private func presentSheetFromSettings(_ action: @escaping () -> Void) {
+        if showSettingsPageSheet {
+            showSettingsPageSheet = false
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+                action()
+            }
+        } else {
+            action()
+        }
+    }
 
     private func settingsRowLabel(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -2573,7 +3287,7 @@ public struct MainRemoteView: View {
                     subtitle: L("无需安装 Node.js，一行命令自动配置 Mac 开机自启服务")
                 ) {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showMacSetupGuideSheet = true
+                    presentSheetFromSettings { showMacSetupGuideSheet = true }
                 }
 
                 settingsNavButton(
@@ -2584,28 +3298,28 @@ public struct MainRemoteView: View {
                         ? L("已接入虚拟局域网，支持 5G/异地直接穿透控制 Mac")
                         : L("首次异地控制请点击此处授权登录 Tailscale")
                 ) {
-                    triggerDirectTailscaleLogin()
+                    presentSheetFromSettings { triggerDirectTailscaleLogin() }
                 }
 
                 settingsNavButton(
                     title: L("扫码一键配对连接"),
                     subtitle: L("扫描 Mac 端二维码，自动配置 Tailscale 与局域网双通道")
                 ) {
-                    showQRScannerSheet = true
+                    presentSheetFromSettings { showQRScannerSheet = true }
                 }
 
                 settingsNavButton(
                     title: L("Tailscale 组网节点与设备列表"),
                     subtitle: L("查看虚拟局域网在线设备、节点状态与内置引擎控制")
                 ) {
-                    showTailnetSheet = true
+                    presentSheetFromSettings { showTailnetSheet = true }
                 }
 
                 settingsNavButton(
                     title: L("通道与连接高级设置"),
                     subtitle: L("配置访问令牌 Token、快捷切换首选 IP 与查看路由延迟")
                 ) {
-                    showSettingsSheet = true
+                    presentSheetFromSettings { showSettingsSheet = true }
                 }
             } header: {
                 Text("扫码配对、Tailscale 组网与连接设置")
@@ -2613,7 +3327,7 @@ public struct MainRemoteView: View {
 
             Section {
                 Button {
-                    showPrivacyPolicySheet = true
+                    presentSheetFromSettings { showPrivacyPolicySheet = true }
                 } label: {
                     HStack {
                         Text(L("隐私政策"))
@@ -2630,7 +3344,7 @@ public struct MainRemoteView: View {
                 .buttonStyle(.plain)
 
                 Button {
-                    showOpenSourceLicensesSheet = true
+                    presentSheetFromSettings { showOpenSourceLicensesSheet = true }
                 } label: {
                     HStack {
                         Text(L("开源组件许可"))
@@ -2646,7 +3360,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 14)")
+                LabeledContent("版本号", value: "1.0.0 (Build 15)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))
