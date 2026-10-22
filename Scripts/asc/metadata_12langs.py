@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """AGY Remote 12 语言 App Store Connect 元数据 (AppInfo + Version Localization + Review Detail)"""
 
+import json
 import os
 
 PRIVACY_URL = "https://lilingdeveloper.github.io/antigravity-remote/privacy.html"
@@ -8,11 +9,26 @@ SUPPORT_URL = "https://lilingdeveloper.github.io/antigravity-remote/support.html
 MARKETING_URL = "https://github.com/lilingdeveloper/antigravity-remote"
 COPYRIGHT = "2026 Antigravity Remote Contributors"
 
+
+def _load_asc_config():
+    cfg_dir = os.path.expanduser(os.environ.get("ASC_CONFIG_DIR", "~/.appstoreconnect"))
+    cfg_path = os.path.join(cfg_dir, "config.json")
+    if os.path.exists(cfg_path):
+        try:
+            with open(cfg_path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+
+_CFG = _load_asc_config()
+
 REVIEW_DETAIL = {
-    "contactFirstName": os.environ.get("ASC_CONTACT_FIRST_NAME", "Developer"),
-    "contactLastName": os.environ.get("ASC_CONTACT_LAST_NAME", "Support"),
-    "contactPhone": os.environ.get("ASC_CONTACT_PHONE", ""),
-    "contactEmail": os.environ.get("ASC_CONTACT_EMAIL", ""),
+    "contactFirstName": os.environ.get("ASC_CONTACT_FIRST_NAME") or _CFG.get("contact_first_name") or "Developer",
+    "contactLastName": os.environ.get("ASC_CONTACT_LAST_NAME") or _CFG.get("contact_last_name") or "Support",
+    "contactPhone": os.environ.get("ASC_CONTACT_PHONE") or _CFG.get("contact_phone") or "",
+    "contactEmail": os.environ.get("ASC_CONTACT_EMAIL") or _CFG.get("contact_email") or "",
     "demoAccountName": None,
     "demoAccountPassword": None,
     "demoAccountRequired": False,

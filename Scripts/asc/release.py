@@ -77,8 +77,75 @@ def preflight(v, verbose=False):
     return problems
 
 
+def ensure_free_price(app_id, dry_run=False, territory="USA"):
+    code, sched = asc.call("GET", f"/v1/apps/{app_id}/appPriceSchedule?include=baseTerritory,manualPrices")
+    if code == 200 and sched.get("data"):
+        print("✓ 价格计划已存在 ($0.00 Free)")
+        return
+    pts = asc.ok("GET", f"/v1/apps/{app_id}/appPricePoints?filter[territory]={territory}&limit=50")["data"]
+    free_pt = next(
+        (p for p in pts if str(p.get("attributes", {}).get("customerPrice", "")) in ("0", "0.0", "0.00")),
+        None,
+    )
+    if not free_pt:
+        raise RuntimeError(f"未找到 {territory} 的 $0.00 价格点")
+    body = {
+        "data": {
+            "type": "appPriceSchedules",
+            "relationships": {
+                "app": {"data": {"type": "apps", "id": app_id}},
+                "baseTerritory": {"data": {"type": "territories", "id": territory}},
+                "manualPrices": {"data": [{"type": "appPrices", "id": "${price-free}"}]},
+            },
+        },
+        "included": [
+            {
+                "type": "appPrices",
+                "id": "${price-free}",
+                "attributes": {"startDate": None},
+                "relationships": {
+                    "appPricePoint": {"data": {"type": "appPricePoints", "id": free_pt["id"]}}
+                },
+            }
+        ],
+    }
+    say(dry_run, f"POST /v1/appPriceSchedules (Free $0.00, territory={territory}, pricePoint={free_pt['id']})")
+    if not dry_run:
+        asc.ok("POST", "/v1/appPriceSchedules", body, expect=(201,))
+    print("✓ 已设置全球免费价格 ($0.00 Free)")
+
+
+def resolve_review_detail(app_id):
+    detail = dict(REVIEW_DETAIL)
+    if detail.get("contactEmail") and detail.get("contactPhone"):
+        return detail
+    code, apps = asc.call("GET", "/v1/apps?limit=20")
+    if code == 200:
+        for other in apps.get("data", []):
+            c2, vers = asc.call("GET", f"/v1/apps/{other['id']}/appStoreVersions?limit=5")
+            if c2 != 200:
+                continue
+            for ver in vers.get("data", []):
+                c3, rd = asc.call("GET", f"/v1/appStoreVersions/{ver['id']}/appStoreReviewDetail")
+                if c3 == 200 and rd.get("data"):
+                    at = rd["data"]["attributes"]
+                    if at.get("contactEmail") and at.get("contactPhone"):
+                        detail["contactFirstName"] = detail.get("contactFirstName") or at.get("contactFirstName") or "Developer"
+                        detail["contactLastName"] = detail.get("contactLastName") or at.get("contactLastName") or "Support"
+                        detail["contactPhone"] = detail.get("contactPhone") or at["contactPhone"]
+                        detail["contactEmail"] = detail.get("contactEmail") or at["contactEmail"]
+                        return detail
+    return detail
+
+
+def cmd_set_free_price(a):
+    app_id = asc.get_app_id()
+    ensure_free_price(app_id, dry_run=a.dry_run, territory=a.territory)
+
+
 def cmd_create_version(a):
     app_id = asc.get_app_id()
+    ensure_free_price(app_id, dry_run=a.dry_run)
     v = asc.find_version(a.version)
     if v:
         print(f"版本 {a.version} 已存在: {v['attributes']['appStoreState']} ({v['id']}), 更新 copyright")
@@ -103,11 +170,19 @@ def cmd_create_version(a):
 
 def cmd_setup_metadata(a):
     app_id = asc.get_app_id()
+    ensure_free_price(app_id, dry_run=a.dry_run)
     v = asc.require_version(a.version)
     vid = v["id"]
 
-    # 0. 更新版本 copyright
+    # 0. 更新 App 版权声明与版本 copyright
     if not a.dry_run:
+        asc.call("PATCH", f"/v1/apps/{app_id}", {
+            "data": {
+                "type": "apps",
+                "id": app_id,
+                "attributes": {"contentRightsDeclaration": "DOES_NOT_USE_THIRD_PARTY_CONTENT"},
+            }
+        })
         asc.ok("PATCH", f"/v1/appStoreVersions/{vid}", {
             "data": {"type": "appStoreVersions", "id": vid, "attributes": {"copyright": COPYRIGHT}}
         }, expect=(200,))
@@ -237,18 +312,19 @@ def cmd_setup_metadata(a):
     print("✓ 12 语言版本详情 (描述/关键词/推广文本/支持网址) 已全部写入")
 
     # 3. 更新 App Store Review Detail (联系人 + Demo 模式测试指南)
+    review_detail = resolve_review_detail(app_id)
     code, rev = asc.call("GET", f"/v1/appStoreVersions/{vid}/appStoreReviewDetail")
     if not a.dry_run:
         if code == 200 and rev.get("data"):
             rid = rev["data"]["id"]
             asc.ok("PATCH", f"/v1/appStoreReviewDetails/{rid}", {
-                "data": {"type": "appStoreReviewDetails", "id": rid, "attributes": REVIEW_DETAIL}
+                "data": {"type": "appStoreReviewDetails", "id": rid, "attributes": review_detail}
             }, expect=(200,))
         else:
             asc.ok("POST", "/v1/appStoreReviewDetails", {
                 "data": {
                     "type": "appStoreReviewDetails",
-                    "attributes": REVIEW_DETAIL,
+                    "attributes": review_detail,
                     "relationships": {"appStoreVersion": {"data": {"type": "appStoreVersions", "id": vid}}}
                 }
             }, expect=(201,))
@@ -346,6 +422,11 @@ def main():
     p = sp.add_parser("status", help="查看版本是否可提交")
     p.add_argument("version")
     p.set_defaults(fn=cmd_status)
+
+    p = sp.add_parser("set-free-price", help="将 App 设置为全球免费 ($0.00 Free)")
+    p.add_argument("--territory", default="USA")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(fn=cmd_set_free_price)
 
     p = sp.add_parser("create-version", help="新建或更新 App Store 版本")
     p.add_argument("version")
