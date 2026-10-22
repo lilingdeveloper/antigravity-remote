@@ -623,33 +623,39 @@ public struct MainRemoteView: View {
             }
 
             HStack(spacing: 6) {
-                // 连接状态与实时延迟胶囊 (点击弹出设置页)
+                // 连接状态与实时延迟胶囊 (固定宽度 94pt，杜绝延迟数字变化引起长度抖动)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showSettingsPageSheet = true
                 } label: {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Circle()
                             .fill(statusDotColor)
-                            .frame(width: 7, height: 7)
-                        Text(compactRouteCapsuleText)
-                            .font(.system(size: 11, weight: .medium))
+                            .frame(width: 6.5, height: 6.5)
+                        Text(compactRouteTitleText)
+                            .font(.system(size: 10.5, weight: .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
+                        Spacer(minLength: 2)
+                        if client.isConnected, let rtt = client.latencyMs {
+                            Text("\(min(rtt, 999))ms")
+                                .font(.system(size: 10, weight: .regular, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 8)
+                    .frame(width: 94, height: 24)
                     .background(Color(uiColor: .tertiarySystemBackground), in: Capsule())
                 }
                 .buttonStyle(.plain)
 
-                // 当前选择模型的「5 小时额度」与「1 周额度」胶囊（紧挨局域网胶囊右侧，充分利用空间）
-                if let activeModel = currentActiveModelItem {
-                    let frac5h = activeModel.fiveHourRemainingFraction ?? activeModel.remainingFraction ?? 1.0
-                    let frac1w = activeModel.weeklyRemainingFraction ?? activeModel.remainingFraction ?? 1.0
-                    headerQuotaCapsule(title: L("5小时额度"), fraction: frac5h)
-                    headerQuotaCapsule(title: L("1周额度"), fraction: frac1w)
-                }
+                // 当前选择模型的「5 小时额度」与「1 周额度」胶囊（固定宽度与高度，永远不发生长度抖动）
+                let activeModel = currentActiveModelItem
+                let frac5h = activeModel?.fiveHourRemainingFraction ?? activeModel?.remainingFraction ?? 1.0
+                let frac1w = activeModel?.weeklyRemainingFraction ?? activeModel?.remainingFraction ?? 1.0
+                headerQuotaCapsule(title: L("5小时额度"), fraction: frac5h, fixedWidth: 110)
+                headerQuotaCapsule(title: L("1周额度"), fraction: frac1w, fixedWidth: 102)
 
                 Spacer(minLength: 2)
 
@@ -661,10 +667,10 @@ public struct MainRemoteView: View {
                             Image(systemName: "stop.fill")
                                 .font(.system(size: 9, weight: .bold))
                             Text(L("停止"))
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 10.5, weight: .bold))
                         }
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 8)
+                        .frame(height: 24)
                         .background(Color.red.opacity(0.18), in: Capsule())
                         .foregroundStyle(.red)
                     }
@@ -724,23 +730,19 @@ public struct MainRemoteView: View {
         return .green
     }
 
-    private var compactRouteCapsuleText: String {
+    private var compactRouteTitleText: String {
         guard client.isConnected else {
-            return client.isReconnecting ? L("正在重连...") : L("未连接 Mac")
+            return client.isReconnecting ? L("重连中") : L("未连接")
         }
-        if client.isDemoMode {
-            return client.connectionRouteDescription
-        }
-        let rttSuffix = client.latencyMs.map { " · \($0)ms" } ?? ""
         switch client.routeKind {
         case .lanDirect:
-            return "\(L("局域网"))\(rttSuffix)"
+            return L("局域网")
         case .systemTailscale, .embeddedTailnet:
-            return "Tailscale\(rttSuffix)"
+            return "Tailscale"
         case .customTunnel:
-            return "\(L("公网隧道"))\(rttSuffix)"
+            return L("公网隧道")
         case .probing:
-            return client.connectionRouteDescription
+            return L("选路中")
         }
     }
 
@@ -756,7 +758,7 @@ public struct MainRemoteView: View {
         return client.models.first
     }
 
-    private func headerQuotaCapsule(title: String, fraction: Double) -> some View {
+    private func headerQuotaCapsule(title: String, fraction: Double, fixedWidth: CGFloat) -> some View {
         let clamped = min(max(fraction, 0), 1)
         let pct = Int(round(clamped * 100))
         let color: Color = pct > 50 ? .green : (pct > 20 ? .orange : .red)
@@ -765,30 +767,31 @@ public struct MainRemoteView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             showModelPickerSheet = true
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 3) {
                 Text(title)
                     .font(.system(size: 10.5, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
-                if !client.isGenerating {
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.primary.opacity(0.10))
-                            .frame(width: 22, height: 5)
-                        Capsule()
-                            .fill(color)
-                            .frame(width: max(3, 22 * clamped), height: 5)
-                    }
+                Spacer(minLength: 2)
+
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: 14, height: 4.5)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: max(3, 14 * clamped), height: 4.5)
                 }
 
                 Text("\(pct)%")
                     .font(.system(size: 10.5, weight: .bold, design: .monospaced))
                     .foregroundStyle(color)
+                    .frame(width: 29, alignment: .trailing)
                     .lineLimit(1)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 7)
+            .frame(width: fixedWidth, height: 24)
             .background(Color(uiColor: .tertiarySystemBackground), in: Capsule())
         }
         .buttonStyle(.plain)
@@ -3558,7 +3561,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 18)")
+                LabeledContent("版本号", value: "1.0.0 (Build 19)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))
