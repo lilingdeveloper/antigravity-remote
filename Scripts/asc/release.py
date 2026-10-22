@@ -147,14 +147,23 @@ def cmd_create_version(a):
     app_id = asc.get_app_id()
     ensure_free_price(app_id, dry_run=a.dry_run)
     v = asc.find_version(a.version)
+    if not v:
+        all_vers = asc.ok("GET", f"/v1/apps/{app_id}/appStoreVersions?filter[platform]=IOS&limit=5")["data"]
+        prep = [x for x in all_vers if x["attributes"].get("appStoreState") == "PREPARE_FOR_SUBMISSION"]
+        if prep:
+            v = prep[0]
     if v:
-        print(f"版本 {a.version} 已存在: {v['attributes']['appStoreState']} ({v['id']}), 更新 copyright")
+        print(f"版本 {v['attributes'].get('versionString')} -> {a.version} 已存在: {v['attributes']['appStoreState']} ({v['id']}), 更新 versionString & copyright")
         if not a.dry_run:
             asc.ok("PATCH", f"/v1/appStoreVersions/{v['id']}", {
                 "data": {
                     "type": "appStoreVersions",
                     "id": v["id"],
-                    "attributes": {"copyright": a.copyright or COPYRIGHT, "releaseType": a.release_type}
+                    "attributes": {
+                        "versionString": a.version,
+                        "copyright": a.copyright or COPYRIGHT,
+                        "releaseType": a.release_type,
+                    }
                 }
             }, expect=(200,))
         return
@@ -195,6 +204,16 @@ def cmd_setup_metadata(a):
     )] or infos
     for info in editable_infos[:1]:
         iid = info["id"]
+        if not a.dry_run:
+            asc.call("PATCH", f"/v1/appInfos/{iid}", {
+                "data": {
+                    "type": "appInfos",
+                    "id": iid,
+                    "relationships": {
+                        "primaryCategory": {"data": {"type": "appCategories", "id": "DEVELOPER_TOOLS"}},
+                    },
+                }
+            })
         locs = asc.ok("GET", f"/v1/appInfos/{iid}/appInfoLocalizations?limit=50")["data"]
         by_loc = {l["attributes"]["locale"]: l for l in locs}
         for loc in asc.LOCALES:
@@ -239,27 +258,34 @@ def cmd_setup_metadata(a):
         if code == 200 and ard.get("data"):
             ard_id = ard["data"]["id"]
             age_attrs = {
+                "advertising": False,
+                "ageAssurance": False,
                 "alcoholTobaccoOrDrugUseOrReferences": "NONE",
                 "contests": "NONE",
                 "gambling": False,
                 "gamblingSimulated": "NONE",
+                "gunsOrOtherWeapons": "NONE",
+                "healthOrWellnessTopics": False,
                 "horrorOrFearThemes": "NONE",
+                "kidsAgeBand": None,
+                "lootBox": False,
                 "matureOrSuggestiveThemes": "NONE",
                 "medicalOrTreatmentInformation": "NONE",
+                "messagingAndChat": False,
+                "parentalControls": False,
                 "profanityOrCrudeHumor": "NONE",
                 "sexualContentGraphicAndNudity": "NONE",
                 "sexualContentOrNudity": "NONE",
+                "unrestrictedWebAccess": False,
+                "userGeneratedContent": False,
                 "violenceCartoonOrFantasy": "NONE",
                 "violenceRealistic": "NONE",
                 "violenceRealisticProlongedGraphicOrSadistic": "NONE",
-                "unrestrictedWebAccess": False,
-                "kidsAgeBand": None,
-                "lootBox": False,
             }
             if not a.dry_run:
-                asc.call("PATCH", f"/v1/ageRatingDeclarations/{ard_id}", {
+                asc.ok("PATCH", f"/v1/ageRatingDeclarations/{ard_id}", {
                     "data": {"type": "ageRatingDeclarations", "id": ard_id, "attributes": age_attrs}
-                })
+                }, expect=(200,))
             print("✓ 年龄分级 (4+) 已配置")
 
     # 2. 更新 Version Localizations (description, keywords, promotionalText, whatsNew, supportUrl, marketingUrl)

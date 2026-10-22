@@ -56,7 +56,7 @@ def upload_one(set_id, name, data):
 
 def wait_complete(ids):
     states = {}
-    for _ in range(60):
+    for _ in range(120):
         for i in ids:
             d = asc.ok("GET", f"/v1/appScreenshots/{i}?fields[appScreenshots]=assetDeliveryState")
             states[i] = d["data"]["attributes"]["assetDeliveryState"]["state"]
