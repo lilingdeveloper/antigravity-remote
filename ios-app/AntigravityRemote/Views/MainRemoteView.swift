@@ -47,10 +47,10 @@ public struct MainRemoteView: View {
     @State private var sidebarDragOffset: CGFloat = 0
     @State private var isChatAtBottom: Bool = true
     @State private var expandedToolIds: Set<String> = []
+    @State private var expandedUserTurnIds: Set<String> = []
     @State private var expandedDiffIds: Set<String> = []
     @State private var expandedArtifactIds: Set<String> = []
     @State private var copiedInstallCmd: Bool = false
-    @State private var singleLineInputHeight: CGFloat = 40
     @FocusState private var isInputFocused: Bool
 
     public init() {
@@ -581,9 +581,6 @@ public struct MainRemoteView: View {
 
                 Spacer(minLength: 4)
 
-                // 标题栏正下方：模型与思考强度选择胶囊
-                modelPickerPill
-
                 if client.isGenerating {
                     Button {
                         Task { await client.stopRunningAgent() }
@@ -687,6 +684,9 @@ public struct MainRemoteView: View {
                let found = client.models.first(where: { $0.modelId == client.activeConversationModelId }) {
                 return found.label
             }
+            if let first = client.models.first {
+                return first.label
+            }
             return L("模型")
         }()
 
@@ -697,26 +697,19 @@ public struct MainRemoteView: View {
         return trimmed
     }
 
-    private var modelPickerPill: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            showModelPickerSheet = true
-        } label: {
-            HStack(spacing: 4) {
-                Image(systemName: "cpu")
-                    .font(.system(size: 10, weight: .semibold))
-                Text(currentModelLabel)
-                    .font(.system(size: 11, weight: .semibold))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .bold))
+    /// 拆分模型显示名为「主名称 + 思考等级后缀」（如 ("Gemini 3.1 Pro", "High")）以对齐 Antigravity Remote Control 底部栏样式
+    private var composerModelParts: (baseName: String, tier: String?) {
+        let full = currentModelLabel
+        if let openIdx = full.lastIndex(of: "("),
+           let closeIdx = full.lastIndex(of: ")"),
+           openIdx < closeIdx {
+            let base = String(full[..<openIdx]).trimmingCharacters(in: .whitespaces)
+            let tier = String(full[full.index(after: openIdx)..<closeIdx]).trimmingCharacters(in: .whitespaces)
+            if !base.isEmpty && !tier.isEmpty {
+                return (base, tier)
             }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
-            .background(Color.purple.opacity(0.14), in: Capsule())
-            .foregroundStyle(.purple)
         }
-        .buttonStyle(.plain)
+        return (full, nil)
     }
 
     // MARK: - 根据「思考过程展示」与「读取文件展示」开关实时过滤对话消息
@@ -782,37 +775,85 @@ public struct MainRemoteView: View {
         )
     }
 
-    // MARK: - Tab 1: 丝滑对话流 + 审批卡片 + 底部输入栏
+    // MARK: - 按「用户每轮提问」分组并支持滚动吸顶置顶 (Sticky Turn Headers)
+
+    private struct ChatTurnGroup: Identifiable {
+        let id: String
+        let userMessage: ChatMessageItem?
+        var responseItems: [ChatMessageItem]
+    }
+
+    private var chatTurnGroups: [ChatTurnGroup] {
+        var groups: [ChatTurnGroup] = []
+        for msg in visibleMessages {
+            if msg.role == "user" {
+                groups.append(
+                    ChatTurnGroup(
+                        id: "turn-\(msg.id)",
+                        userMessage: msg,
+                        responseItems: []
+                    )
+                )
+            } else {
+                if groups.isEmpty {
+                    groups.append(
+                        ChatTurnGroup(
+                            id: "turn-leading-\(msg.id)",
+                            userMessage: nil,
+                            responseItems: [msg]
+                        )
+                    )
+                } else {
+                    groups[groups.count - 1].responseItems.append(msg)
+                }
+            }
+        }
+        return groups
+    }
+
+    // MARK: - Tab 1: 丝滑对话流 (每轮用户消息吸顶置顶) + 审批卡片 + 底部输入栏
 
     private var chatPane: some View {
         VStack(spacing: 0) {
             ScrollViewReader { proxy in
                 ZStack(alignment: .bottom) {
                     ScrollView {
-                        VStack(spacing: 0) {
-                            if visibleMessages.isEmpty && !client.isGenerating {
-                                emptyConversationWelcome
-                                    .padding(16)
-                            } else {
-                                LazyVStack(alignment: .leading, spacing: 12) {
-                                    ForEach(visibleMessages) { msg in
-                                        messageRow(msg)
-                                            .id(msg.id)
-                                    }
-                                    if shouldShowWorkingIndicator {
-                                        aiWorkingIndicatorRow
-                                            .id("AI_WORKING_INDICATOR")
+                        if visibleMessages.isEmpty && !client.isGenerating {
+                            emptyConversationWelcome
+                                .padding(16)
+                                .background(ChatScrollObserver(isAtBottom: $isChatAtBottom))
+                        } else {
+                            let turns = chatTurnGroups
+                            LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+                                ForEach(Array(turns.enumerated()), id: \.element.id) { idx, turn in
+                                    Section {
+                                        VStack(alignment: .leading, spacing: 14) {
+                                            ForEach(turn.responseItems) { item in
+                                                turnResponseItemRow(item)
+                                                    .id(item.id)
+                                            }
+                                            if idx == turns.count - 1 && shouldShowWorkingIndicator {
+                                                aiWorkingIndicatorRow
+                                                    .id("AI_WORKING_INDICATOR")
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.top, 8)
+                                        .padding(.bottom, 22)
+                                    } header: {
+                                        if let userMsg = turn.userMessage {
+                                            stickyUserTurnHeader(userMsg)
+                                                .id(userMsg.id)
+                                        }
                                     }
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-                            }
 
-                            Color.clear
-                                .frame(height: 1)
-                                .id("BOTTOM_ANCHOR")
+                                Color.clear
+                                    .frame(height: 1)
+                                    .id("BOTTOM_ANCHOR")
+                            }
+                            .background(ChatScrollObserver(isAtBottom: $isChatAtBottom))
                         }
-                        .background(ChatScrollObserver(isAtBottom: $isChatAtBottom))
                     }
                     .hideTopScrollEdgeEffect()
                     .scrollDismissesKeyboard(.interactively)
@@ -1190,36 +1231,73 @@ public struct MainRemoteView: View {
         }
     }
 
-    // MARK: - 消息气泡、思考过程持久化展开与代码块卡片渲染
+    // MARK: - 吸顶用户消息栏 (Sticky User Turn Header) 与全宽文档流式回复渲染
 
     @ViewBuilder
-    private func messageRow(_ msg: ChatMessageItem) -> some View {
-        if msg.role == "user" {
-            VStack(alignment: .trailing, spacing: 4) {
-                HStack {
-                    Spacer(minLength: 45)
-                    Text(msg.text ?? "")
-                        .font(.body)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.blue, Color.blue.opacity(0.85)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ),
-                            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        )
-                        .textSelection(.enabled)
-                }
+    private func stickyUserTurnHeader(_ msg: ChatMessageItem) -> some View {
+        let rawText = (msg.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let isExpanded = expandedUserTurnIds.contains(msg.id)
+        let isLong = rawText.count > 72 || rawText.contains("\n")
 
-                if let fullText = msg.text, !fullText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    copyFullMessageButton(msgId: "full-\(msg.id)", fullText: fullText)
-                        .padding(.trailing, 4)
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 8) {
+                Text(rawText)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(isExpanded ? 14 : 2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                if isLong {
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                        .padding(.top, 4)
                 }
             }
-        } else if msg.role == "tool" {
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color(uiColor: .secondarySystemBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(Color.primary.opacity(0.09), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.10), radius: 5, y: 2)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .onTapGesture {
+                guard isLong else { return }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    if isExpanded {
+                        expandedUserTurnIds.remove(msg.id)
+                    } else {
+                        expandedUserTurnIds.insert(msg.id)
+                    }
+                }
+            }
+            .contextMenu {
+                if !rawText.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = rawText
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Label(L("复制提问内容"), systemImage: "doc.on.doc")
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .background(Color(uiColor: .systemBackground).opacity(0.96))
+    }
+
+    @ViewBuilder
+    private func turnResponseItemRow(_ msg: ChatMessageItem) -> some View {
+        if msg.role == "tool" {
             toolExecutionPill(msg)
         } else {
             let trimmedThinking = (msg.thinking ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1228,24 +1306,23 @@ public struct MainRemoteView: View {
             let showText = !trimmedText.isEmpty
 
             if showThinking || showText {
-                VStack(alignment: .leading, spacing: 6) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        if showThinking {
-                            thinkingCard(msgId: msg.id, thinking: trimmedThinking, isStreaming: msg.isGenerating == true)
-                        }
-
-                        if showText, let rawText = msg.text {
-                            formattedAssistantBody(msgId: msg.id, text: rawText)
-                        }
+                VStack(alignment: .leading, spacing: 12) {
+                    if showThinking {
+                        thinkingCard(msgId: msg.id, thinking: trimmedThinking, isStreaming: msg.isGenerating == true)
                     }
-                    .padding(13)
-                    .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-                    if showText, let fullText = msg.text {
-                        copyFullMessageButton(msgId: "full-\(msg.id)", fullText: fullText)
-                            .padding(.leading, 4)
+                    if showText, let rawText = msg.text {
+                        formattedAssistantBody(msgId: msg.id, text: rawText)
+                            .lineSpacing(4)
+
+                        HStack(spacing: 14) {
+                            Spacer()
+                            copyFullMessageButton(msgId: "full-\(msg.id)", fullText: rawText)
+                        }
+                        .padding(.top, 2)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -1258,15 +1335,17 @@ public struct MainRemoteView: View {
             copiedBlockId = msgId
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: isCopied ? "checkmark.circle.fill" : "doc.on.doc")
-                    .font(.system(size: 11, weight: .semibold))
-                Text(isCopied ? L("已复制") : L("复制"))
-                    .font(.system(size: 11, weight: .medium))
+                Image(systemName: isCopied ? "checkmark" : "doc.on.doc")
+                    .font(.system(size: 13, weight: .medium))
+                if isCopied {
+                    Text(L("已复制"))
+                        .font(.system(size: 11, weight: .medium))
+                }
             }
             .foregroundStyle(isCopied ? Color.green : Color.secondary)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background(Color(uiColor: .secondarySystemBackground).opacity(0.75), in: Capsule())
+            .padding(.horizontal, 6)
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -1803,8 +1882,9 @@ public struct MainRemoteView: View {
     private var composerBar: some View {
         let isQueueModeActive = client.queueMessagesWhenBusy && (client.isGenerating || !client.queuedMessages.isEmpty)
         let canSend = (!inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingAttachments.isEmpty) && !isLoadingMedia
+        let modelParts = composerModelParts
 
-        return VStack(spacing: 6) {
+        return VStack(alignment: .leading, spacing: 10) {
             if !pendingAttachments.isEmpty || isLoadingMedia {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
@@ -1817,13 +1897,13 @@ public struct MainRemoteView: View {
                                             .scaledToFill()
                                     } else {
                                         ZStack {
-                                            Color(uiColor: .secondarySystemBackground)
+                                            Color(uiColor: .tertiarySystemBackground)
                                             Image(systemName: item.isVideo ? "video.fill" : "photo.fill")
                                                 .foregroundStyle(.secondary)
                                         }
                                     }
                                 }
-                                .frame(width: 60, height: 60)
+                                .frame(width: 56, height: 56)
                                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -1850,7 +1930,7 @@ public struct MainRemoteView: View {
                                     pendingAttachments.removeAll { $0.id == item.id }
                                 } label: {
                                     Image(systemName: "xmark.circle.fill")
-                                        .font(.system(size: 17))
+                                        .font(.system(size: 16))
                                         .foregroundStyle(.white, Color.black.opacity(0.75))
                                 }
                                 .offset(x: 5, y: -5)
@@ -1868,16 +1948,30 @@ public struct MainRemoteView: View {
                                     .foregroundStyle(.secondary)
                             }
                             .padding(.horizontal, 10)
-                            .frame(height: 60)
-                            .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .frame(height: 56)
+                            .background(Color(uiColor: .tertiarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                         }
                     }
-                    .padding(.horizontal, 12)
+                    .padding(.horizontal, 14)
+                    .padding(.top, 10)
                 }
             }
 
-            HStack(alignment: .bottom, spacing: 8) {
-                // 输入框左侧：上传图片或视频按钮
+            // 第一行：全宽无边框多行输入框
+            TextField(
+                L("向电脑端 Antigravity 发送指令..."),
+                text: $inputText,
+                axis: .vertical
+            )
+            .focused($isInputFocused)
+            .font(.system(size: 15.5))
+            .lineLimit(1...6)
+            .padding(.horizontal, 14)
+            .padding(.top, (!pendingAttachments.isEmpty || isLoadingMedia) ? 2 : 13)
+            .padding(.bottom, 2)
+
+            // 第二行：左侧「+ 添加媒体/附件」+「模型切换器」，右侧圆形发送/排队按钮
+            HStack(spacing: 12) {
                 PhotosPicker(
                     selection: $selectedPhotoItems,
                     maxSelectionCount: 6,
@@ -1885,20 +1979,20 @@ public struct MainRemoteView: View {
                     photoLibrary: .shared()
                 ) {
                     ZStack(alignment: .topTrailing) {
-                        Image(systemName: "photo.badge.plus")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.blue)
-                            .frame(width: singleLineInputHeight, height: singleLineInputHeight)
-                            .background(Color(uiColor: .secondarySystemBackground), in: Circle())
+                        Image(systemName: "plus")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
 
                         if !pendingAttachments.isEmpty {
                             Text("\(pendingAttachments.count)")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
+                                .padding(.horizontal, 4)
                                 .padding(.vertical, 1)
                                 .background(Color.blue, in: Capsule())
-                                .offset(x: 4, y: -2)
+                                .offset(x: 5, y: -3)
                         }
                     }
                 }
@@ -1910,27 +2004,33 @@ public struct MainRemoteView: View {
                     }
                 }
 
-                TextField(
-                    L("向电脑端 Antigravity 发送指令..."),
-                    text: $inputText,
-                    axis: .vertical
-                )
-                .focused($isInputFocused)
-                .lineLimit(1...5)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 8)
-                .background(
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: InputFieldHeightPreferenceKey.self,
-                            value: proxy.size.height
-                        )
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showModelPickerSheet = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(modelParts.baseName)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        if let tier = modelParts.tier, !tier.isEmpty {
+                            Text(tier)
+                                .font(.system(size: 14, weight: .regular))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                        }
+
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.tertiary)
                     }
-                )
-                .background(
-                    Color(uiColor: .secondarySystemBackground),
-                    in: RoundedRectangle(cornerRadius: singleLineInputHeight / 2, style: .continuous)
-                )
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 8)
 
                 Button {
                     let text = inputText
@@ -1940,32 +2040,34 @@ public struct MainRemoteView: View {
                     isInputFocused = false
                     Task { await client.sendMessage(text: text, attachments: attachments) }
                 } label: {
-                    Image(systemName: isQueueModeActive ? "clock.fill" : "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
+                    Image(systemName: isQueueModeActive ? "clock.fill" : "arrow.right")
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(canSend ? Color.white : Color.secondary.opacity(0.55))
-                        .frame(width: singleLineInputHeight, height: singleLineInputHeight)
+                        .frame(width: 32, height: 32)
                         .background(
                             canSend
                                 ? (isQueueModeActive ? Color.orange : Color.blue)
-                                : Color(uiColor: .secondarySystemBackground),
+                                : Color.primary.opacity(0.08),
                             in: Circle()
                         )
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend)
             }
-            .onPreferenceChange(InputFieldHeightPreferenceKey.self) { measuredHeight in
-                guard measuredHeight > 20 else { return }
-                if inputText.isEmpty || measuredHeight < singleLineInputHeight {
-                    let rounded = (measuredHeight * 2).rounded() / 2
-                    if abs(singleLineInputHeight - rounded) > 0.1 {
-                        singleLineInputHeight = rounded
-                    }
-                }
-            }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.bottom, 10)
         }
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.primary.opacity(0.10), lineWidth: 1)
+        )
+        .padding(.horizontal, 12)
+        .padding(.top, 4)
+        .padding(.bottom, 8)
         .background(Color(uiColor: .systemBackground))
     }
 
@@ -2417,7 +2519,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 12)")
+                LabeledContent("版本号", value: "1.0.0 (Build 13)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))

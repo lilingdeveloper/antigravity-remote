@@ -227,8 +227,9 @@ struct ConversationListSheet: View {
                                             .foregroundStyle(.green)
                                         }
                                         if convo.id == client.currentCascadeId {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundStyle(.blue)
+                                            Circle()
+                                                .fill(Color.blue)
+                                                .frame(width: 8, height: 8)
                                         }
                                     }
                                     .contentShape(Rectangle())
@@ -264,9 +265,14 @@ struct ConversationListSheet: View {
                             .padding(.vertical, 2)
                         }
                     } header: {
-                        HStack {
-                            Text("📁 \(project.name)")
-                                .font(.caption.weight(.bold))
+                        HStack(spacing: 6) {
+                            Image(systemName: "folder")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            Text(project.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .textCase(nil)
                             Spacer()
                             Button {
                                 if let uri = project.workspaceUri, !uri.isEmpty {
@@ -275,9 +281,13 @@ struct ConversationListSheet: View {
                                 }
                                 onNewChat()
                             } label: {
-                                Label("在此项目新建", systemImage: "plus.circle")
-                                    .font(.caption2)
+                                Image(systemName: "plus")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 24, height: 24)
+                                    .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
