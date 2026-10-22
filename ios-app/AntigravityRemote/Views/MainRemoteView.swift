@@ -622,7 +622,7 @@ public struct MainRemoteView: View {
                 )
             }
 
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
                 // 连接状态与实时延迟胶囊 (点击弹出设置页)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -632,7 +632,7 @@ public struct MainRemoteView: View {
                         Circle()
                             .fill(statusDotColor)
                             .frame(width: 7, height: 7)
-                        Text(client.isConnected ? client.connectionRouteDescription : (client.isReconnecting ? L("正在自动重连...") : L("未连接 Mac")))
+                        Text(compactRouteCapsuleText)
                             .font(.system(size: 11, weight: .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -643,7 +643,15 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                Spacer(minLength: 4)
+                // 当前选择模型的「5 小时额度」与「1 周额度」胶囊（紧挨局域网胶囊右侧，充分利用空间）
+                if let activeModel = currentActiveModelItem {
+                    let frac5h = activeModel.fiveHourRemainingFraction ?? activeModel.remainingFraction ?? 1.0
+                    let frac1w = activeModel.weeklyRemainingFraction ?? activeModel.remainingFraction ?? 1.0
+                    headerQuotaCapsule(title: L("5小时额度"), fraction: frac5h)
+                    headerQuotaCapsule(title: L("1周额度"), fraction: frac1w)
+                }
+
+                Spacer(minLength: 2)
 
                 if client.isGenerating {
                     Button {
@@ -714,6 +722,76 @@ public struct MainRemoteView: View {
         if !client.isConnected { return .orange }
         if tailnet.systemTailscaleActive { return .blue }
         return .green
+    }
+
+    private var compactRouteCapsuleText: String {
+        guard client.isConnected else {
+            return client.isReconnecting ? L("正在重连...") : L("未连接 Mac")
+        }
+        if client.isDemoMode {
+            return client.connectionRouteDescription
+        }
+        let rttSuffix = client.latencyMs.map { " · \($0)ms" } ?? ""
+        switch client.routeKind {
+        case .lanDirect:
+            return "\(L("局域网"))\(rttSuffix)"
+        case .systemTailscale, .embeddedTailnet:
+            return "Tailscale\(rttSuffix)"
+        case .customTunnel:
+            return "\(L("公网隧道"))\(rttSuffix)"
+        case .probing:
+            return client.connectionRouteDescription
+        }
+    }
+
+    private var currentActiveModelItem: AIModelItem? {
+        if !client.selectedModelId.isEmpty,
+           let found = client.models.first(where: { $0.modelId == client.selectedModelId }) {
+            return found
+        }
+        if !client.activeConversationModelId.isEmpty,
+           let found = client.models.first(where: { $0.modelId == client.activeConversationModelId }) {
+            return found
+        }
+        return client.models.first
+    }
+
+    private func headerQuotaCapsule(title: String, fraction: Double) -> some View {
+        let clamped = min(max(fraction, 0), 1)
+        let pct = Int(round(clamped * 100))
+        let color: Color = pct > 50 ? .green : (pct > 20 ? .orange : .red)
+
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showModelPickerSheet = true
+        } label: {
+            HStack(spacing: 5) {
+                Text(title)
+                    .font(.system(size: 10.5, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if !client.isGenerating {
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.primary.opacity(0.10))
+                            .frame(width: 22, height: 5)
+                        Capsule()
+                            .fill(color)
+                            .frame(width: max(3, 22 * clamped), height: 5)
+                    }
+                }
+
+                Text("\(pct)%")
+                    .font(.system(size: 10.5, weight: .bold, design: .monospaced))
+                    .foregroundStyle(color)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color(uiColor: .tertiarySystemBackground), in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func triggerDirectTailscaleLogin() {
@@ -3480,7 +3558,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 17)")
+                LabeledContent("版本号", value: "1.0.0 (Build 18)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))

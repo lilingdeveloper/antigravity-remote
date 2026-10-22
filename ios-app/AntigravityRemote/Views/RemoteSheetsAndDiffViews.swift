@@ -563,12 +563,22 @@ struct ModelPickerSheet: View {
         }
     }
 
+    private var effectiveSelectedModelId: String {
+        if !client.selectedModelId.isEmpty {
+            return client.selectedModelId
+        }
+        if !client.activeConversationModelId.isEmpty {
+            return client.activeConversationModelId
+        }
+        return client.models.first?.modelId ?? ""
+    }
+
     private func activeVariant(for family: ModelFamilyGroup) -> ModelVariant {
         if let chosenIntensity = selectedIntensityByFamily[family.baseName],
            let found = family.variants.first(where: { $0.intensity == chosenIntensity }) {
             return found
         }
-        let currentId = client.selectedModelId.isEmpty ? client.activeConversationModelId : client.selectedModelId
+        let currentId = effectiveSelectedModelId
         if let matched = family.variants.first(where: { $0.model.modelId == currentId }) {
             return matched
         }
@@ -670,34 +680,11 @@ struct ModelPickerSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        client.selectModelForCurrentConversation("")
-                        dismiss()
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(L("跟随电脑端当前会话模型"))
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(.primary)
-                                Text(activeMacModelName)
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if client.selectedModelId.isEmpty {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundStyle(.blue)
-                            }
-                        }
-                    }
-                }
-
-                Section {
                     ForEach(modelFamilies) { family in
                         let currentVar = activeVariant(for: family)
-                        let isFamilyConfirmed = family.variants.contains(where: { $0.model.modelId == client.selectedModelId })
-                        let isExactSelected = (client.selectedModelId == currentVar.model.modelId)
+                        let activeId = effectiveSelectedModelId
+                        let isFamilyConfirmed = family.variants.contains(where: { $0.model.modelId == activeId })
+                        let isExactSelected = (activeId == currentVar.model.modelId)
 
                         HStack(spacing: 10) {
                             // 左侧与主体区域：点击整个大条目即可确认选择该模型 + 当前选中的思考强度
@@ -728,7 +715,7 @@ struct ModelPickerSheet: View {
                                         }
                                     }
 
-                                    // 5小时额度 与 周额度 双进度条 + 重置倒计时显示
+                                    // 5小时额度 与 1周额度 双进度条 + 重置倒计时显示
                                     VStack(alignment: .leading, spacing: 6) {
                                         if let frac5h = family.fiveHourFraction {
                                             quotaProgressRow(
@@ -739,7 +726,7 @@ struct ModelPickerSheet: View {
                                         }
                                         if let fracWeekly = family.weeklyFraction {
                                             quotaProgressRow(
-                                                title: L("周额度"),
+                                                title: L("1周额度"),
                                                 fraction: fracWeekly,
                                                 resetISO: family.weeklyResetTime
                                             )
@@ -758,6 +745,9 @@ struct ModelPickerSheet: View {
                                         Button {
                                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                             selectedIntensityByFamily[family.baseName] = variant.intensity
+                                            if isFamilyConfirmed {
+                                                client.selectModelForCurrentConversation(variant.model.modelId)
+                                            }
                                         } label: {
                                             HStack {
                                                 Text(variant.intensityLabel)

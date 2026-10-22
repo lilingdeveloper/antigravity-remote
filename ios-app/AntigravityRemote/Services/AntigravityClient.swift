@@ -1202,9 +1202,14 @@ public final class AntigravityClient: ObservableObject {
         }
         do {
             let res: ModelsResponse = try await request(path: "/api/v1/models")
-            if let list = res.models, !list.isEmpty, models != list {
-                models = list
-                scheduleSaveOfflineSnapshot()
+            if let list = res.models, !list.isEmpty {
+                if models != list {
+                    models = list
+                    scheduleSaveOfflineSnapshot()
+                }
+                if selectedModelId.isEmpty {
+                    selectedModelId = !activeConversationModelId.isEmpty ? activeConversationModelId : (list.first?.modelId ?? "")
+                }
             }
         } catch HTTPNotModifiedSignal.notModified {
             // 304 未修改，直接保留现有完整模型列表
@@ -2283,6 +2288,9 @@ public final class AntigravityClient: ObservableObject {
                 }
 
                 self.pollTickCount += 1
+                if self.models.isEmpty || (self.pollTickCount % 10 == 0) {
+                    await self.fetchModels()
+                }
                 let needsHighFrequency = !self.isConnected || self.isGenerating || !self.isSSEActive
                 if needsHighFrequency || (self.pollTickCount % 5 == 0) {
                     await self.fetchStatus()
