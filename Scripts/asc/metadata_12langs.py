@@ -56,207 +56,213 @@ METADATA = {
     "zh-Hans": {
         "name": "AGY Remote",
         "subtitle": "AI 编程工作区移动远程控制",
-        "promotionalText": "专为 Vibe Coding 打造的随身远程控制端！内置 Tailscale 免公网穿透，支持思考流同步、远程命令审批、代码 Diff 预览与上下文容量监控。",
-        "keywords": "vibe coding,远程控制,AI编程,tailscale,代码对比,开发者工具,终端审批,agent,开发助手,mac远程",
-        "whatsNew": "• 首发上线：支持局域网与内置 Tailscale 双通道毫秒级直连 Mac 工作区\n• 实时流式同步 AI 思考过程、工具调用胶丸、上下文容量进度条与代码高亮\n• 支持手机端远程一键审批终端命令 (Approve/Reject) 与实施方案 (Proceed)\n• 内置免连接交互式演示模式 (Demo Mode) 与 12 国语言支持",
+        "promotionalText": "针对桌面端缺少移动端远程控制功能而开发的辅助工具。支持在手机和平板上查看对话进度、审批终端命令及查阅代码变更。",
+        "keywords": "antigravity,远程控制,AI编程,tailscale,代码对比,开发者工具,终端审批,agent,开发助手,mac远程",
+        "whatsNew": "• 初始版本：支持通过局域网与 Tailscale 连接 Mac 本地守护进程\n• 同步显示对话内容、思考过程、工具调用步骤与模型额度状态\n• 支持远程处理终端命令审批、方案确认与问题选择\n• 内置离线演示模式与 12 种语言界面",
         "description": (
-            "在 Vibe Coding 时代，越来越多开发者使用 AI Agent 自动编写代码、运行测试与重构架构。然而当离开电脑前、出门在外或躺在沙发上时，如果电脑端的 Agent 卡在「等待终端命令审批」或需要确认下一阶段方案，开发流程就会被迫中断。\n\n"
-            "AGY Remote 专为解决这一痛点而生！它将您 Mac 上的 AI 编程工作区完整映射到 iPhone 与 iPad 上，提供丝滑的原生流式对话、远程权限审批与代码检视体验。\n\n"
-            "【毫秒级双擎流式对话】\n"
-            "• 实时展示 AI 思考过程（Thinking 折叠/展开卡片）、工具调用记录（读取文件、修改代码、执行命令）与 Markdown 代码高亮卡片。\n"
-            "• 标题栏下方实时显示当前对话上下文容量百分比与 Token 消耗进度条。\n"
-            "• 智能消息排队：当 AI 正在思考或执行任务时，新发送的消息可自动进入待发送队列依次执行，绝不打断当前推理。\n\n"
-            "【远程权限审批 · 开发流永不卡壳】\n"
-            "• 电脑端触发终端命令确认（Approve / Reject）、实施方案确认（Proceed）或多选题交互时，手机端即时弹出审批卡片，一键放行。\n\n"
-            "【代码变更 (Diffs) 与方案文档 (Artifacts)】\n"
-            "• 随时在手机上检视当前会话修改的每一个源代码文件与 Markdown 架构方案文档，支持一键复制全文。\n\n"
-            "【内置 Tailscale 免公网 IP · 扫码即连】\n"
-            "• 内置多路并发竞速路由（Happy Eyeballs）：自动在局域网极速直连与 Tailscale 虚拟局域网穿透之间无缝切换。\n"
-            "• 内置免连接「交互式演示模式 (Demo Mode)」，无需配置电脑即可直接体验完整功能。\n\n"
-            "【零数据收集 · 纯粹点对点隐私安全】\n"
-            "• 无广告、无统计追踪、无需注册账号，所有数据仅在您的 iOS 设备与您本人的 Mac 之间点对点直连传输。"
+            "由于桌面端目前尚未提供移动端远程控制功能，AGY Remote 作为一款独立的第三方辅助客户端，用于在离开电脑时通过 iPhone 或 iPad 查看和控制 Mac 上的工作区会话。\n\n"
+            "主要功能：\n\n"
+            "1. 会话同步与状态查看\n"
+            "• 同步展示电脑端当前项目与历史对话列表、AI 思考过程、工具调用记录及代码块。\n"
+            "• 顶部状态栏显示当前连接通道（局域网或 Tailscale）以及所选模型的 5 小时与 1 周剩余额度。\n"
+            "• 支持在任务运行期间发送新消息进入待发队列，或随时停止当前正在执行的任务。\n\n"
+            "2. 远程命令审批与模式切换\n"
+            "• 当电脑端任务需要人工确认终端命令（批准 / 拒绝）、确认实施方案或回答多选题时，可在手机端直接操作。\n"
+            "• 底部输入框支持同步和切换电脑端的权限模式（审核 / 自动 / Turbo）与 AI 模型。\n\n"
+            "3. 代码变更与方案文档查阅\n"
+            "• 会话中的方案规划文档与代码文件修改记录默认折叠归类，点击后可以卡片窗口形式查看完整的 Markdown 文档或代码差异（Diff）。\n\n"
+            "4. 连接方式与数据隐私\n"
+            "• 本应用需配合用户在自己 Mac 上运行的开源桥接服务使用，支持局域网直连和 Tailscale 虚拟局域网连接。\n"
+            "• 应用不包含广告与第三方统计，无需注册账号，所有数据仅在用户的 iOS 设备与个人 Mac 之间直接传输。\n"
+            "• 内置离线演示模式，无需连接电脑即可预览界面与交互流程。"
         ),
     },
     "zh-Hant": {
         "name": "AGY Remote",
         "subtitle": "AI 程式工作區行動遠端控制",
-        "promotionalText": "專為 Vibe Coding 打造的隨身遠端控制端！內建 Tailscale 免公網穿透，支援思考流同步、遠端指令審批、程式碼 Diff 預覽與上下文容量監控。",
-        "keywords": "vibe coding,遠端控制,AI程式,tailscale,程式碼對比,開發者工具,終端審批,agent,開發助手,mac遠端",
-        "whatsNew": "• 首發上線：支援區域網路與內建 Tailscale 雙通道毫秒級直連 Mac 工作區\n• 即時串流同步 AI 思考過程、工具呼叫、上下文容量進度條與程式碼高亮\n• 支援手機端遠端一鍵審批終端機指令與實施方案\n• 內建免連線互動式示範模式 (Demo Mode) 與 12 國語言支援",
+        "promotionalText": "針對桌面端缺少行動端遠端控制功能而開發的輔助工具。支援在手機和平板上查看對話進度、審批終端機指令及查閱程式碼變更。",
+        "keywords": "antigravity,遠端控制,AI程式,tailscale,程式碼對比,開發者工具,終端審批,agent,開發助手,mac遠端",
+        "whatsNew": "• 初始版本：支援透過區域網路與 Tailscale 連接 Mac 本機守護行程\n• 同步顯示對話內容、思考過程、工具呼叫步驟與模型額度狀態\n• 支援遠端處理終端機指令審批、方案確認與問題選擇\n• 內建離線示範模式與 12 種語言介面",
         "description": (
-            "在 Vibe Coding 時代，越來越多開發者使用 AI Agent 自動編寫程式碼、執行測試與重構架構。然而當離開電腦前或出門在外時，若電腦端的 Agent 等待終端機指令審批或方案確認，開發流程就會被迫中斷。\n\n"
-            "AGY Remote 將您 Mac 上的 AI 程式開發工作區完整延伸至 iPhone 與 iPad，提供流暢的原生串流對話、遠端權限審批與程式碼檢視體驗。\n\n"
-            "【毫秒級串流對話與上下文監控】\n"
-            "• 即時顯示 AI 思考過程、工具呼叫記錄、上下文 Token 容量進度條與語法高亮程式碼區塊。\n"
-            "• 支援訊息智慧排隊：AI 忙碌時新發送的指令自動排隊依序執行。\n\n"
-            "【遠端指令與方案一鍵審批】\n"
-            "• 手機端即時彈出終端機指令 (Approve / Reject) 與實施方案 (Proceed) 審批卡片，隨時隨地一鍵放行。\n\n"
-            "【程式碼變更 (Diffs) 與方案文件 (Artifacts)】\n"
-            "• 隨時檢視修改的原始碼差異與 Markdown 計畫文件，支援一鍵複製。\n\n"
-            "【內建 Tailscale 免公網 IP · 零資料收集】\n"
-            "• 支援區域網路與 Tailscale 雙通道自動競速切換，並提供離線互動示範模式 (Demo Mode)。無廣告、無追蹤，純點對點加密直連。"
+            "由於桌面端目前尚未提供行動端遠端控制功能，AGY Remote 作為一款獨立的第三方輔助用戶端，用於在離開電腦時透過 iPhone 或 iPad 查看和控制 Mac 上的工作區工作階段。\n\n"
+            "主要功能：\n\n"
+            "1. 工作階段同步與狀態查看\n"
+            "• 同步展示電腦端目前專案與歷史對話列表、AI 思考過程、工具呼叫記錄及程式碼區塊。\n"
+            "• 頂部狀態列顯示目前連線通道（區域網路或 Tailscale）以及所選模型的 5 小時與 1 週剩餘額度。\n"
+            "• 支援在任務執行期間發送新訊息進入待發佇列，或隨時停止目前正在執行的任務。\n\n"
+            "2. 遠端指令審批與模式切換\n"
+            "• 當電腦端任務需要人工確認終端機指令（批准 / 拒絕）、確認實施方案或回答選擇題時，可在手機端直接操作。\n"
+            "• 底部輸入框支援同步和切換電腦端的權限模式（審核 / 自動 / Turbo）與 AI 模型。\n\n"
+            "3. 程式碼變更與方案文件查閱\n"
+            "• 對話中的方案規劃文件與程式碼檔案修改記錄預設折疊歸類，點擊後可以卡片視窗形式查看完整的 Markdown 文件或程式碼差異（Diff）。\n\n"
+            "4. 連線方式與資料隱私\n"
+            "• 本應用需配合使用者在自己 Mac 上執行的開源橋接服務使用，支援區域網路直連和 Tailscale 虛擬區域網路連線。\n"
+            "• 應用不包含廣告與第三方統計，無需註冊帳號，所有資料僅在使用者的 iOS 裝置與個人 Mac 之間直接傳輸。\n"
+            "• 內建離線示範模式，無需連接電腦即可預覽介面與互動流程。"
         ),
     },
     "en-US": {
         "name": "AGY Remote",
         "subtitle": "Remote Control for AI Coding",
-        "promotionalText": "Control your Mac AI coding workspace from iPhone & iPad! Live thinking streams, remote command approvals, code diffs, context meter, and built-in Tailscale.",
-        "keywords": "vibe coding,remote control,ai coding,tailscale,code diff,developer tools,agent,ide remote,mac",
-        "whatsNew": "• Initial release: Multi-path low-latency connection over LAN and built-in Tailscale\n• Live streaming AI thinking cards, tool call pills, context capacity bar & code blocks\n• One-tap remote approval for terminal commands and implementation plans\n• Built-in interactive offline Demo Mode and 12-language localization",
+        "promotionalText": "A companion client built to provide mobile remote control for desktop AI coding workspaces. View chats, approve commands, and inspect code diffs.",
+        "keywords": "antigravity,remote control,ai coding,tailscale,code diff,developer tools,agent,ide remote,mac",
+        "whatsNew": "• Initial release: Connect to your local Mac companion daemon over LAN or Tailscale\n• View conversation history, thinking steps, tool calls, and model quota status\n• Remotely approve or reject terminal commands, implementation plans, and prompts\n• Built-in offline Demo Mode and 12-language interface support",
         "description": (
-            "In the era of Vibe Coding, AI agents write code, run tests, and refactor projects autonomously. Yet when you step away from your desk, your workflow often stalls waiting for a terminal command approval or plan confirmation.\n\n"
-            "AGY Remote brings your Mac AI coding workspace directly to your iPhone and iPad with native streaming performance, instant remote approvals, and full code diff inspection.\n\n"
-            "[Real-Time Streaming Chat & Context Meter]\n"
-            "• Watch live AI thinking processes, categorized tool calls (read_file, edit_file, run_command), and syntax-highlighted code blocks.\n"
-            "• Monitor real-time conversation context window usage (percentage & token count) right below the title bar.\n"
-            "• Smart Message Queueing: Queue follow-up prompts while the agent is busy so tasks execute sequentially without interruption.\n\n"
-            "[One-Tap Remote Approvals]\n"
-            "• Approve or reject terminal commands, confirm implementation plans (Proceed), and answer agent questions from anywhere.\n\n"
-            "[Code Diffs & Markdown Artifacts]\n"
-            "• Inspect modified source files and architecture plans on the go with one-tap copy.\n\n"
-            "[Built-in Tailscale & Interactive Demo Mode]\n"
-            "• Happy Eyeballs multi-route engine races LAN direct and Tailscale mesh connections automatically.\n"
-            "• Includes a full interactive offline Demo Mode so you can explore every feature immediately without connecting a Mac.\n\n"
-            "[Zero Data Collection & Peer-to-Peer Privacy]\n"
-            "• Zero tracking, no ads, and no third-party analytics. All traffic flows directly between your iOS device and your own Mac."
+            "Because the desktop workspace currently does not include a built-in mobile remote control feature, AGY Remote was developed as an independent companion client to view and interact with your Mac workspace from an iPhone or iPad when you are away from your desk.\n\n"
+            "Key Functions:\n\n"
+            "1. Conversation Sync & Status Monitoring\n"
+            "• Displays active and historical conversations grouped by project, along with AI thinking steps, tool calls, and syntax-highlighted code blocks.\n"
+            "• Shows the current connection route (LAN or Tailscale) as well as 5-hour and 1-week model quota status in the top bar.\n"
+            "• Supports queueing follow-up messages while a task is running, or stopping an active run at any time.\n\n"
+            "2. Remote Approvals & Mode Switching\n"
+            "• Handle pending terminal command approvals (Approve / Reject), implementation plan confirmations, and multiple-choice questions remotely.\n"
+            "• Synchronize and switch permission modes (Review / Auto / Turbo) and AI models directly from the bottom input bar.\n\n"
+            "3. Code Diffs & Plan Documents\n"
+            "• Implementation plans and modified source files are grouped into a collapsible inline summary card within the chat, and can be opened in a modal view to inspect full Markdown documents or code diffs.\n\n"
+            "4. Connectivity & Privacy\n"
+            "• Works with an open-source companion bridge running on your own Mac over local network (LAN) or Tailscale.\n"
+            "• Requires no user account, contains no ads or analytics, and transfers data strictly peer-to-peer between your iOS device and your Mac.\n"
+            "• Includes an offline Demo Mode for previewing the interface without connecting a Mac."
         ),
     },
     "ja": {
         "name": "AGY Remote",
         "subtitle": "AI開発環境のモバイル遠隔操作",
-        "promotionalText": "Mac上のAIコーディング環境をiPhone/iPadから遠隔操作！思考ストリーム、コマンド承認、コード差分(Diff)、コンテキスト残量表示、Tailscale内蔵。",
-        "keywords": "vibe coding,リモート操作,AI開発,tailscale,コード差分,開発ツール,エージェント,ターミナル承認,mac連携",
-        "whatsNew": "• 初回リリース：LANおよび内蔵Tailscaleによるミリ秒単位の高速接続\n• AI思考プロセス、ツール呼び出し、コンテキスト容量バー、コードブロックのリアルタイム同期\n• ターミナルコマンドや実装計画のリモート承認機能\n• Mac不要で試せるインタラクティブ・デモモードと12言語対応",
+        "promotionalText": "デスクトップ環境にないモバイル遠隔操作を補うために作られた補助クライアントです。対話の確認、コマンド承認、コード差分の閲覧に対応しています。",
+        "keywords": "antigravity,リモート操作,AI開発,tailscale,コード差分,開発ツール,エージェント,ターミナル承認,mac連携",
+        "whatsNew": "• 初回リリース：LANおよびTailscale経由でのMacローカルデーモン接続に対応\n• 会話履歴、思考ステップ、ツール呼び出し、モデル利用枠の表示\n• ターミナルコマンドの承認・拒否および計画確認のリモート操作\n• オフラインデモモードと12言語のUI表示に対応",
         "description": (
-            "AIエージェントを活用した「Vibe Coding」では、席を離れた間にコマンド実行の承認待ちで作業が止まってしまうことがあります。\n\n"
-            "AGY Remoteは、Mac上のAI開発ワークスペースをiPhoneやiPadへシームレスに拡張し、外出先からでも思考ストリームの確認、コマンド承認、コード差分のレビューを可能にするネイティブアプリです。\n\n"
-            "【リアルタイム対話ストリーム＆コンテキスト監視】\n"
-            "• AIの思考プロセス（折りたたみ/展開）、ツール呼び出し、シンタックスハイライト付きコードをリアルタイム表示。\n"
-            "• コンテキスト使用率（％およびトークン数）をプログレスバーで常時把握。\n\n"
-            "【リモート承認で作業を止めない】\n"
-            "• ターミナルコマンドの許可/拒否（Approve/Reject）や計画書の承認（Proceed）をスマホからワンタップで処理。\n\n"
-            "【コード差分(Diffs)とドキュメント(Artifacts)】\n"
-            "• 変更されたソースコードやMarkdownの設計書をいつでもプレビュー・コピー可能。\n\n"
-            "【Tailscale内蔵・デモモード搭載・完全プライベート】\n"
-            "• LANとTailscaleを自動切り替え。Mac未接続でもすぐ試せるデモモードを搭載。広告・追跡ゼロのP2P直接通信。"
+            "デスクトップの作業環境には現在モバイル向けのリモート操作機能がないため、席を離れている際にもiPhoneやiPadからMac上のセッションを確認・操作できるように作られた独立した補助クライアントです。\n\n"
+            "主な機能：\n\n"
+            "1. 会話の同期とステータスの確認\n"
+            "• プロジェクト別の会話一覧、AIの思考プロセス、ツール呼び出し履歴、コードブロックを同期して表示します。\n"
+            "• 上部バーに接続経路（LANまたはTailscale）と選択中モデルの5時間・1週間の残り利用枠を表示します。\n\n"
+            "2. リモート承認とモード切り替え\n"
+            "• ターミナルコマンドの実行確認（承認・拒否）、実装計画の確認、選択式の質問への回答をモバイル端末から行えます。\n"
+            "• 下部バーから権限モード（Review / Auto / Turbo）やAIモデルの切り替え、実行中タスクの停止が可能です。\n\n"
+            "3. コード差分（Diff）と計画ドキュメントの閲覧\n"
+            "• 計画ドキュメントと変更されたソースファイルは会話内に折りたたんでまとめられ、タップして差分やMarkdown全文を確認できます。\n\n"
+            "4. 接続方式とプライバシー\n"
+            "• ご自身のMacで動作するオープンソースのブリッジサービスとLANまたはTailscale経由で直接通信します。アカウント登録やデータ収集はなく、オフラインで画面を確認できるデモモードも備えています。"
         ),
     },
     "ko": {
         "name": "AGY Remote",
         "subtitle": "AI 코딩 워크스페이스 모바일 원격 제어",
-        "promotionalText": "Mac의 AI 코딩 환경을 iPhone과 iPad에서 원격 제어하세요! 실시간 사고 과정 스트리밍, 명령 승인, 코드 Diff 확인 및 내장 Tailscale 지원.",
-        "keywords": "vibe coding,원격제어,AI코딩,tailscale,코드비교,개발자도구,에이전트,터미널승인,맥원격",
-        "whatsNew": "• 첫 출시: LAN 및 내장 Tailscale 듀얼 채널 초저지연 연결\n• AI 사고 과정, 도구 호출, 컨텍스트 용량 바 및 코드 블록 실시간 스트리밍\n• 원격 터미널 명령 및 실행 계획 원탭 승인\n• Mac 연결 없이 바로 체험 가능한 인터랙티브 데모 모드 및 12개 국어 지원",
+        "promotionalText": "데스크톱 환경에 없는 모바일 원격 제어 기능을 보완하기 위해 제작된 보조 클라이언트입니다. 대화 확인, 명령어 승인 및 코드 변경 내역 조회를 지원합니다.",
+        "keywords": "antigravity,원격제어,AI코딩,tailscale,코드비교,개발자도구,에이전트,터미널승인,맥원격",
+        "whatsNew": "• 첫 출시: LAN 및 Tailscale을 통한 Mac 로컬 데몬 연결 지원\n• 대화 기록, 사고 과정, 도구 호출 단계 및 모델 할당량 상태 표시\n• 터미널 명령 승인/거절 및 실행 계획 원격 확인\n• 오프라인 데모 모드 및 12개 언어 인터페이스 지원",
         "description": (
-            "AI 에이전트와 함께하는 Vibe Coding 시대에 자리를 비웠을 때 터미널 명령 승인 대기 때문에 작업이 멈춘 적이 있으신가요?\n\n"
-            "AGY Remote는 Mac의 AI 개발 워크스페이스를 iPhone 및 iPad로 연결하여 언제 어디서나 실시간 추론 스트림 확인, 권한 승인, 코드 변경 검토를 지원하는 네이티브 리모트 앱입니다.\n\n"
-            "[실시간 스트리밍 대화 및 컨텍스트 용량 바]\n"
-            "• AI 사고 과정(Thinking), 도구 호출 기록, 코드 하이라이팅 및 컨텍스트 토큰 사용률을 실시간으로 표시합니다.\n"
-            "• 스마트 메시지 대기열: AI가 작업 중일 때 보낸 메시지를 자동으로 큐에 넣어 순차적으로 실행합니다.\n\n"
-            "[원탭 원격 승인]\n"
-            "• 터미널 명령 실행(Approve/Reject) 및 구현 계획(Proceed)을 모바일에서 즉시 승인하세요.\n\n"
-            "[코드 Diff 및 아티팩트 문서 프리뷰]\n"
-            "• 수정된 파일과 마크다운 계획서를 한눈에 비교하고 원탭으로 복사할 수 있습니다.\n\n"
-            "[내장 Tailscale & 오프라인 데모 모드 & 철저한 프라이버시]\n"
-            "• 공인 IP 없이도 QR 스캔으로 간편하게 연결되며, 즉시 체험 가능한 데모 모드를 제공합니다. 광고 및 데이터 수집 제로."
+            "데스크톱 환경에서 아직 모바일 원격 제어 기능을 제공하지 않아, 자리를 비웠을 때 iPhone이나 iPad에서 Mac의 작업 세션을 확인하고 제어할 수 있도록 개발된 독립 보조 클라이언트입니다.\n\n"
+            "주요 기능:\n\n"
+            "1. 대화 동기화 및 상태 확인\n"
+            "• 프로젝트별 대화 목록, AI 사고 과정, 도구 호출 기록 및 코드 블록을 동기화하여 표시합니다.\n"
+            "• 상단 바에 현재 연결 경로(LAN 또는 Tailscale)와 선택된 모델의 5시간 및 1주일 잔여 할당량을 표시합니다.\n\n"
+            "2. 원격 승인 및 모드 전환\n"
+            "• 터미널 명령 실행 확인(승인/거절), 구현 계획 확인 및 객관식 질문 응답을 모바일에서 처리할 수 있습니다.\n"
+            "• 하단 입력창에서 권한 모드(Review / Auto / Turbo)와 AI 모델을 전환하거나 실행 중인 작업을 중지할 수 있습니다.\n\n"
+            "3. 코드 변경(Diff) 및 계획 문서 열람\n"
+            "• 계획 문서와 수정된 코드 파일은 대화창 내에 접이식 카드로 정리되며, 탭하여 전체 마크다운 문서나 코드 변경 내역을 확인할 수 있습니다.\n\n"
+            "4. 연결 방식 및 개인정보 보호\n"
+            "• 사용자의 Mac에서 실행되는 오픈소스 브리지 서비스와 LAN 또는 Tailscale로 직접 통신합니다. 광고나 데이터 수집이 없으며, Mac 연결 없이 인터페이스를 미리 볼 수 있는 데모 모드를 포함하고 있습니다。"
         ),
     },
     "fr-FR": {
         "name": "AGY Remote",
         "subtitle": "Contrôle distant pour IDE IA",
-        "promotionalText": "Pilotez votre espace de codage IA Mac depuis iPhone et iPad ! Flux de réflexion en direct, approbation de commandes, diffs de code et Tailscale intégré.",
-        "keywords": "vibe coding,contrôle distant,codage ia,tailscale,diff code,outils dev,agent,terminal,mac",
-        "whatsNew": "• Version initiale : Connexion ultra-rapide via LAN et Tailscale intégré\n• Flux de réflexion IA, appels d'outils, jauge de contexte et blocs de code en direct\n• Approbation à distance en un geste des commandes terminal et plans d'action\n• Mode Démo interactif hors-ligne intégré et support de 12 langues",
+        "promotionalText": "Client compagnon conçu pour pallier l'absence de contrôle mobile à distance sur l'environnement de bureau. Consultez les sessions, validez les commandes et lisez les diffs.",
+        "keywords": "antigravity,contrôle distant,codage ia,tailscale,diff code,outils dev,agent,terminal,mac",
+        "whatsNew": "• Version initiale : Connexion au service local Mac via LAN et Tailscale\n• Affichage de l'historique des conversations, des étapes de réflexion et des quotas du modèle\n• Approbation à distance des commandes terminal et des plans d'implémentation\n• Mode Démo hors-ligne et interface en 12 langues",
         "description": (
-            "AGY Remote prolonge votre espace de développement IA Mac sur iPhone et iPad. Suivez les réflexions de votre agent en temps réel, approuvez les commandes terminal à distance et inspectez vos diffs de code où que vous soyez.\n\n"
-            "• Flux en temps réel : Cartes de réflexion IA, appels d'outils, barre d'utilisation du contexte et coloration syntaxique.\n"
-            "• Approbations à distance : Validez ou refusez les commandes terminal et plans d'implémentation en un toucher.\n"
-            "• Diffs & Artifacts : Consultez les fichiers modifiés et documents d'architecture Markdown.\n"
-            "• Tailscale intégré & Mode Démo : Connexion directe P2P sans IP publique, plus un Mode Démo interactif sans Mac requis. Zéro pistage, zéro publicité."
+            "L'environnement de bureau ne disposant pas de fonction de contrôle à distance sur mobile, AGY Remote a été développé comme un client compagnon indépendant permettant de suivre et de contrôler vos sessions Mac depuis un iPhone ou un iPad.\n\n"
+            "• Suivi des sessions : Affiche les conversations par projet, les étapes de réflexion, les appels d'outils ainsi que les quotas (5 heures et 1 semaine) du modèle sélectionné.\n"
+            "• Approbations et modes : Permet d'accepter ou de refuser les commandes terminal, de valider les plans, de répondre aux questions et de changer de mode de permission (Review / Auto / Turbo) ou de modèle.\n"
+            "• Diffs et documents : Regroupe les plans Markdown et les modifications de fichiers dans une carte repliable au sein de la conversation.\n"
+            "• Connexion et confidentialité : Fonctionne en pair-à-pair via LAN ou Tailscale avec le service open-source installé sur votre Mac. Aucune collecte de données, aucune publicité, et un mode démo hors-ligne est inclus."
         ),
     },
     "de-DE": {
         "name": "AGY Remote",
         "subtitle": "Fernsteuerung für KI-Coding",
-        "promotionalText": "Steuere deinen Mac KI-Coding-Workspace vom iPhone & iPad! Live-Denkprozesse, Befehlsfreigaben, Code-Diffs, Kontext-Anzeige und integriertes Tailscale.",
-        "keywords": "vibe coding,fernsteuerung,ki coding,tailscale,code diff,entwickler,agent,terminal,mac",
-        "whatsNew": "• Erstveröffentlichung: Schnelle Verbindung über LAN und integriertes Tailscale\n• Live-Streaming für KI-Denkprozesse, Tool-Aufrufe, Kontext-Balken und Codeblöcke\n• Ein-Tipp-Fernfreigabe für Terminal-Befehle und Implementierungspläne\n• Integrierter interaktiver Offline-Demomodus und 12 Sprachen",
+        "promotionalText": "Ein Begleit-Client zur mobilen Fernsteuerung von Desktop-Arbeitsbereichen ohne eigene Remote-Funktion. Sitzungen einsehen, Befehle freigeben und Code-Diffs prüfen.",
+        "keywords": "antigravity,fernsteuerung,ki coding,tailscale,code diff,entwickler,agent,terminal,mac",
+        "whatsNew": "• Erstveröffentlichung: Verbindung zum lokalen Mac-Dienst über LAN und Tailscale\n• Anzeige von Gesprächsverlauf, Denkschritten, Tool-Aufrufen und Modell-Kontingenten\n• Fernfreigabe von Terminal-Befehlen und Implementierungsplänen\n• Offline-Demomodus und Unterstützung für 12 Sprachen",
         "description": (
-            "AGY Remote bringt deinen Mac KI-Entwicklungs-Workspace direkt auf iPhone und iPad. Verfolge Denkprozesse in Echtzeit, gib Terminal-Befehle von unterwegs frei und prüfe Code-Änderungen (Diffs) jederzeit.\n\n"
-            "• Echtzeit-Streaming & Kontext-Balken: KI-Denkprozesse, Tool-Aufrufe, Token-Auslastung und Code-Highlighting.\n"
-            "• Fernfreigaben mit einem Tipp: Terminal-Befehle (Approve/Reject) und Architekturpläne (Proceed) sofort bestätigen.\n"
-            "• Code-Diffs & Dokumente: Geänderte Dateien und Markdown-Pläne übersichtlich prüfen.\n"
-            "• Tailscale integriert & Demomodus: Direkte P2P-Verbindung ohne öffentliche IP sowie interaktiver Demomodus ohne Mac. Kein Tracking, keine Werbung."
+            "Da die Desktop-Umgebung derzeit keine eigene mobile Fernsteuerung bietet, wurde AGY Remote als unabhängiger Begleit-Client entwickelt, um Sitzungen auf dem Mac von einem iPhone oder iPad aus einzusehen und zu steuern.\n\n"
+            "• Sitzungs- und Statusanzeige: Synchronisiert Gespräche nach Projekt, Denkschritte, Tool-Aufrufe sowie die 5-Stunden- und 1-Wochen-Kontingente des gewählten Modells.\n"
+            "• Fernfreigaben und Moduswechsel: Bestätigen oder ablehnen von Terminal-Befehlen und Plänen, wechseln des Berechtigungsmodus (Review / Auto / Turbo) und Stoppen laufender Aufgaben.\n"
+            "• Code-Diffs und Plandokumente: Fasst Plandokumente und Dateiänderungen kompakt im Chat zusammen.\n"
+            "• Verbindung und Datenschutz: Direkte Peer-to-Peer-Verbindung über LAN oder Tailscale zum Open-Source-Dienst auf Ihrem Mac. Keine Datenerhebung, keine Werbung, inklusive Offline-Demomodus."
         ),
     },
     "es-ES": {
         "name": "AGY Remote",
         "subtitle": "Control remoto para IDE de IA",
-        "promotionalText": "¡Controla tu espacio de programación IA en Mac desde iPhone y iPad! Flujo de pensamiento en vivo, aprobación de comandos, diffs de código y Tailscale.",
-        "keywords": "vibe coding,control remoto,ia programación,tailscale,diff código,desarrollador,agente,mac",
-        "whatsNew": "• Lanzamiento inicial: Conexión de baja latencia vía LAN y Tailscale integrado\n• Sincronización en vivo de pensamiento IA, herramientas, barra de contexto y código\n• Aprobación remota en un toque para comandos de terminal y planes\n• Modo Demo interactivo sin conexión y soporte para 12 idiomas",
+        "promotionalText": "Cliente complementario creado para ofrecer control remoto móvil al entorno de escritorio. Permite ver sesiones, aprobar comandos de terminal y revisar cambios de código.",
+        "keywords": "antigravity,control remoto,ia programación,tailscale,diff código,desarrollador,agente,mac",
+        "whatsNew": "• Versión inicial: Conexión al servicio local en Mac mediante LAN y Tailscale\n• Visualización de conversaciones, pasos de razonamiento, herramientas y cuota del modelo\n• Aprobación remota de comandos de terminal y planes de implementación\n• Modo Demo sin conexión e interfaz en 12 idiomas",
         "description": (
-            "AGY Remote conecta tu espacio de desarrollo IA en Mac con tu iPhone y iPad. Supervisa el razonamiento del agente en tiempo real, aprueba comandos de terminal a distancia y revisa diffs de código desde cualquier lugar.\n\n"
-            "• Chat en tiempo real y barra de contexto: Visualiza pensamientos de IA, llamadas a herramientas y uso de tokens.\n"
-            "• Aprobaciones remotas: Autoriza o rechaza comandos de terminal y planes de implementación al instante.\n"
-            "• Diffs de código y artefactos: Inspecciona archivos modificados y documentos Markdown.\n"
-            "• Tailscale integrado y Modo Demo: Conexión P2P directa sin IP pública y Modo Demo interactivo integrado. Cero rastreo y sin anuncios."
+            "Dado que el entorno de escritorio no cuenta actualmente con una función de control remoto móvil, AGY Remote se desarrolló como un cliente complementario independiente para consultar y controlar las sesiones de tu Mac desde un iPhone o iPad.\n\n"
+            "• Sincronización de sesiones: Muestra conversaciones por proyecto, pasos de razonamiento, llamadas a herramientas y el estado de cuota de 5 horas y 1 semana del modelo actual.\n"
+            "• Aprobaciones y modos: Permite aprobar o rechazar comandos de terminal, confirmar planes, cambiar el modo de permisos (Review / Auto / Turbo) o detener tareas en curso.\n"
+            "• Diffs de código y documentos: Agrupa los planes en Markdown y los archivos modificados en una tarjeta plegable dentro de la conversación.\n"
+            "• Conexión y privacidad: Comunicación directa entre tu dispositivo iOS y el servicio de código abierto en tu Mac por LAN o Tailscale, sin recopilación de datos ni anuncios, e incluye un modo de demostración sin conexión."
         ),
     },
     "ru": {
         "name": "AGY Remote",
         "subtitle": "Пульт для ИИ-среды разработки",
-        "promotionalText": "Управляйте ИИ-средой разработки на Mac с iPhone и iPad! Поток размышлений, одобрение команд, просмотр Diff кода, шкала контекста и встроенный Tailscale.",
-        "keywords": "vibe coding,удаленное управление,ии код,tailscale,diff кода,разработка,агент,терминал,mac",
-        "whatsNew": "• Первый релиз: Быстрое подключение по LAN и через встроенный Tailscale\n• Поток размышлений ИИ, вызовы инструментов, шкала контекста и подсветка кода\n• Удалённое одобрение терминальных команд и планов реализации в одно касание\n• Встроенный интерактивный демо-режим без Mac и поддержка 12 языков",
+        "promotionalText": "Вспомогательный клиент для мобильного управления рабочей средой на Mac, в которой нет встроенного удаленного доступа. Просмотр диалогов, подтверждение команд и проверка Diff.",
+        "keywords": "antigravity,удаленное управление,ии код,tailscale,diff кода,разработка,агент,терминал,mac",
+        "whatsNew": "• Первый выпуск: Подключение к локальной службе на Mac по LAN и Tailscale\n• Отображение истории диалогов, шагов рассуждений, вызовов инструментов и лимитов модели\n• Удаленное подтверждение команд терминала и планов реализации\n• Автономный демо-режим и интерфейс на 12 языках",
         "description": (
-            "AGY Remote переносит рабочее пространство ИИ-разработки с вашего Mac на iPhone и iPad. Следите за рассуждениями агента, одобряйте команды терминала и проверяйте изменения кода (Diffs) из любой точки мира.\n\n"
-            "• Потоковый чат и шкала контекста: Мыслительный процесс ИИ, вызовы инструментов и процент заполнения контекстного окна.\n"
-            "• Удалённое подтверждение: Разрешайте или отклоняйте команды терминала и планы реализации одним касанием.\n"
-            "• Diff кода и артефакты: Просматривайте изменённые файлы и планы в формате Markdown.\n"
-            "• Встроенный Tailscale и Демо-режим: Прямое P2P-соединение без белого IP и полноценный демо-режим. Без рекламы и слежки."
+            "Поскольку в настольной среде в настоящее время отсутствует встроенная функция удаленного управления с мобильных устройств, приложение AGY Remote было создано как независимый вспомогательный клиент для просмотра и управления сессиями на Mac с iPhone или iPad.\n\n"
+            "• Просмотр сессий и статуса: Отображает список диалогов по проектам, ход рассуждений, вызовы инструментов, а также остаток квоты выбранной модели на 5 часов и 1 неделю.\n"
+            "• Удаленное подтверждение: Позволяет одобрять или отклонять команды терминала и планы, переключать режимы разрешений (Review / Auto / Turbo) и останавливать текущую задачу.\n"
+            "• Изменения кода и документы: Планы в формате Markdown и измененные файлы группируются в сворачиваемую карточку внутри диалога.\n"
+            "• Подключение и конфиденциальность: Прямое соединение по LAN или Tailscale с локальной службой на вашем Mac. Без рекламы, без сбора данных и со встроенным демо-режимом."
         ),
     },
     "pt-BR": {
         "name": "AGY Remote",
         "subtitle": "Controle Remoto para IDE de IA",
-        "promotionalText": "Controle seu workspace de programação IA no Mac pelo iPhone e iPad! Fluxo de raciocínio ao vivo, aprovação de comandos, diffs de código e Tailscale integrado.",
-        "keywords": "vibe coding,controle remoto,programação ia,tailscale,diff código,desenvolvedor,agente,mac",
-        "whatsNew": "• Lançamento inicial: Conexão rápida via LAN e Tailscale integrado\n• Streaming ao vivo do raciocínio da IA, ferramentas, barra de contexto e código\n• Aprovação remota em um toque para comandos de terminal e planos\n• Modo Demo interativo offline integrado e suporte a 12 idiomas",
+        "promotionalText": "Cliente auxiliar desenvolvido para oferecer controle remoto móvel ao ambiente de desktop. Acompanhe conversas, aprove comandos de terminal e visualize diffs de código.",
+        "keywords": "antigravity,controle remoto,programação ia,tailscale,diff código,desenvolvedor,agente,mac",
+        "whatsNew": "• Versão inicial: Conexão ao serviço local no Mac via LAN e Tailscale\n• Exibição do histórico de conversas, etapas de raciocínio, ferramentas e cotas do modelo\n• Aprovação remota de comandos de terminal e planos de implementação\n• Modo Demo offline integrado e suporte a 12 idiomas",
         "description": (
-            "O AGY Remote leva seu ambiente de desenvolvimento IA do Mac diretamente para o iPhone e iPad. Acompanhe o raciocínio do agente em tempo real, aprove comandos de terminal remotamente e revise diffs de código de onde estiver.\n\n"
-            "• Streaming em tempo real e barra de contexto: Veja o processo de pensamento da IA, chamadas de ferramentas e uso de tokens.\n"
-            "• Aprovações remotas em 1 toque: Autorize comandos de terminal e planos de implementação sem interromper seu fluxo.\n"
-            "• Diffs de código e artefatos: Inspecione arquivos modificados e planos em Markdown.\n"
-            "• Tailscale integrado e Modo Demo: Conexão P2P direta sem IP público e Modo Demo interativo sem precisar de Mac. Zero rastreamento e sem anúncios."
+            "Como o ambiente de desktop atualmente não possui um recurso integrado de controle remoto móvel, o AGY Remote foi criado como um cliente auxiliar independente para visualizar e interagir com as sessões do seu Mac a partir do iPhone ou iPad.\n\n"
+            "• Sincronização e status: Exibe conversas organizadas por projeto, etapas de raciocínio, chamadas de ferramentas e a cota restante de 5 horas e 1 semana do modelo selecionado.\n"
+            "• Aprovações e modos: Permite aprovar ou rejeitar comandos de terminal, confirmar planos, alternar modos de permissão (Review / Auto / Turbo) e interromper tarefas em execução.\n"
+            "• Diffs de código e documentos: Agrupa documentos de plano e arquivos modificados em um cartão recolhível dentro da conversa.\n"
+            "• Conexão e privacidade: Comunicação direta via LAN ou Tailscale com o serviço de código aberto no seu Mac. Sem coleta de dados, sem anúncios e com modo de demonstração offline incluso."
         ),
     },
     "it": {
         "name": "AGY Remote",
         "subtitle": "Controllo remoto per IDE IA",
-        "promotionalText": "Controlla il tuo workspace di programmazione IA su Mac da iPhone e iPad! Flusso di pensiero live, approvazione comandi, diff del codice e Tailscale integrato.",
-        "keywords": "vibe coding,controllo remoto,programmazione ia,tailscale,diff codice,sviluppatore,agente,mac",
-        "whatsNew": "• Versione iniziale: Connessione rapida via LAN e Tailscale integrato\n• Streaming live del pensiero IA, chiamate strumenti, barra del contesto e codice\n• Approvazione remota in un tocco per comandi terminale e piani\n• Modalità Demo interattiva offline integrata e supporto per 12 lingue",
+        "promotionalText": "Client ausiliario realizzato per fornire un controllo remoto mobile all'ambiente desktop. Consente di seguire le sessioni, approvare i comandi e consultare i diff del codice.",
+        "keywords": "antigravity,controllo remoto,programmazione ia,tailscale,diff codice,sviluppatore,agente,mac",
+        "whatsNew": "• Versione iniziale: Connessione al servizio locale su Mac tramite LAN e Tailscale\n• Visualizzazione di conversazioni, passaggi di ragionamento, strumenti e quote del modello\n• Approvazione remota di comandi da terminale e piani di implementazione\n• Modalità Demo offline e interfaccia in 12 lingue",
         "description": (
-            "AGY Remote estende il tuo workspace di sviluppo IA su Mac direttamente su iPhone e iPad. Segui il ragionamento dell'agente in tempo reale, approva i comandi da terminale a distanza ed esamina i diff del codice ovunque ti trovi.\n\n"
-            "• Chat in streaming e barra del contesto: Visualizza i processi di pensiero IA, gli strumenti invocati e l'uso dei token.\n"
-            "• Approvazioni remote: Autorizza o rifiuta comandi terminale e piani d'azione con un solo tocco.\n"
-            "• Diff del codice e artefatti: Controlla i file modificati e i documenti Markdown.\n"
-            "• Tailscale integrato e Modalità Demo: Connessione diretta P2P senza IP pubblico e Modalità Demo interattiva integrata. Zero tracciamento e nessuna pubblicità."
+            "Poiché l'ambiente desktop non dispone attualmente di una funzione di controllo remoto per dispositivi mobili, AGY Remote è stato sviluppato come client ausiliario indipendente per consultare e gestire le sessioni del proprio Mac da iPhone e iPad.\n\n"
+            "• Sincronizzazione e stato: Mostra le conversazioni divise per progetto, i passaggi di ragionamento, le chiamate agli strumenti e la quota residua (5 ore e 1 settimana) del modello selezionato.\n"
+            "• Approvazioni e modalità: Permette di approvare o rifiutare comandi da terminale, confermare piani, cambiare la modalità di autorizzazione (Review / Auto / Turbo) o interrompere l'attività in corso.\n"
+            "• Diff del codice e documenti: Raggruppa i documenti di pianificazione e i file modificati in una scheda comprimibile all'interno della chat.\n"
+            "• Connessione e privacy: Comunicazione diretta tramite LAN o Tailscale con il servizio open-source sul proprio Mac. Nessuna raccolta dati, nessuna pubblicità e modalità demo offline inclusa."
         ),
     },
     "ar-SA": {
         "name": "AGY Remote",
         "subtitle": "تحكم عن بُعد لبيئة البرمجة",
-        "promotionalText": "تحكّم في مساحة عمل البرمجة بالذكاء الاصطناعي على Mac من iPhone وiPad! بث مباشر للتفكير، اعتماد الأوامر، معاينة فروقات الكود، ومحرك Tailscale مدمج.",
-        "keywords": "vibe coding,تحكم عن بعد,برمجة ذكاء اصطناعي,tailscale,مقارنة كود,أدوات مطورين,وكيل ذكي,ماك",
-        "whatsNew": "• الإصدار الأول: اتصال فائق السرعة عبر الشبكة المحلية ومحرك Tailscale المدمج\n• مزامنة فورية لعملية تفكير الذكاء الاصطناعي واستدعاء الأدوات وشريط سعة السياق\n• موافقة عن بُعد بنقرة واحدة على أوامر الطرفية وخطط التنفيذ\n• وضع تجريبي تفاعلي مدمج يعمل دون اتصال ودعم 12 لغة",
+        "promotionalText": "تطبيق مساعد صُمم لتوفير ميزة التحكم عن بُعد عبر الهاتف لبيئة العمل المكتبية التي تفتقر إليها. يتيح متابعة الجلسات واعتماد الأوامر ومراجعة تعديلات الكود.",
+        "keywords": "antigravity,تحكم عن بعد,برمجة ذكاء اصطناعي,tailscale,مقارنة كود,أدوات مطورين,وكيل ذكي,ماك",
+        "whatsNew": "• الإصدار الأول: الاتصال بالخدمة المحلية على جهاز Mac عبر الشبكة المحلية وTailscale\n• عرض سجل المحادثات وخطوات التفكير واستدعاء الأدوات وحصة النموذج المتبقية\n• الموافقة عن بُعد على أوامر الطرفية وخطط التنفيذ\n• وضع تجريبي يعمل دون اتصال ودعم 12 لغة",
         "description": (
-            "يتيح لك تطبيق AGY Remote التحكم الكامل في مساحة عمل البرمجة بالذكاء الاصطناعي على جهاز Mac مباشرة من iPhone وiPad. تابع خطوات تفكير الوكيل الذكي لحظة بلحظة، واعتمد أوامر الطرفية عن بُعد، وراجع تعديلات الأكواد من أي مكان.\n\n"
-            "• محادثة فورية وشريط سعة السياق: عرض عملية التفكير واستدعاء الأدوات ونسبة استهلاك الرموز (Tokens).\n"
-            "• موافقات عن بُعد بنقرة واحدة: قبول أو رفض أوامر الطرفية وخطط العمل فوراً.\n"
-            "• فروقات الكود والمستندات: استعراض الملفات المعدّلة ووثائق Markdown مع النسخ السريع.\n"
-            "• محرك Tailscale مدمج ووضع تجريبي تفاعلي: اتصال مباشر آمن دون IP عام، مع وضع تجريبي متكامل وخصوصية تامة دون إعلانات أو تتبع."
+            "نظراً لأن بيئة العمل المكتبية لا توفر حالياً ميزة التحكم عن بُعد من الهاتف، تم تطوير تطبيق AGY Remote كعميل مساعد مستقل يتيح عرض جلسات العمل على جهاز Mac والتفاعل معها من خلال iPhone أو iPad أثناء الابتعاد عن المكتب.\n\n"
+            "• متابعة الجلسات والحالة: عرض المحادثات مصنفة حسب المشروع، وخطوات التفكير، واستدعاء الأدوات، وحصة الاستخدام المتبقية للنموذج (5 ساعات وأسبوع واحد).\n"
+            "• الاعتماد عن بُعد وتبديل الأوضاع: قبول أو رفض أوامر الطرفية، وتأكيد خطط العمل، وتغيير وضع الصلاحيات (Review / Auto / Turbo) أو إيقاف المهمة الجارية.\n"
+            "• فروقات الكود والمستندات: تجميع مستندات التخطيط والملفات المعدّلة في بطاقة قابلة للطي داخل المحادثة.\n"
+            "• الاتصال والخصوصية: اتصال مباشر عبر الشبكة المحلية أو Tailscale بالخدمة المحلية على جهاز Mac الخاص بك، دون جمع أي بيانات أو إعلانات، مع توفر وضع تجريبي يعمل دون اتصال."
         ),
     },
 }
