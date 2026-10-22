@@ -170,7 +170,7 @@ METADATA = {
     "fr-FR": {
         "name": "AGY Remote",
         "subtitle": "Contrôle distant pour IDE IA",
-        "promotionalText": "Client compagnon conçu pour pallier l'absence de contrôle mobile à distance sur l'environnement de bureau. Consultez les sessions, validez les commandes et lisez les diffs.",
+        "promotionalText": "Client compagnon de contrôle mobile à distance pour l'environnement de bureau. Consultez les sessions, validez les commandes et lisez les diffs.",
         "keywords": "antigravity,contrôle distant,codage ia,tailscale,diff code,outils dev,agent,terminal,mac",
         "whatsNew": "• Version initiale : Connexion au service local Mac via LAN et Tailscale\n• Affichage de l'historique des conversations, des étapes de réflexion et des quotas du modèle\n• Approbation à distance des commandes terminal et des plans d'implémentation\n• Mode Démo hors-ligne et interface en 12 langues",
         "description": (
@@ -184,7 +184,7 @@ METADATA = {
     "de-DE": {
         "name": "AGY Remote",
         "subtitle": "Fernsteuerung für KI-Coding",
-        "promotionalText": "Ein Begleit-Client zur mobilen Fernsteuerung von Desktop-Arbeitsbereichen ohne eigene Remote-Funktion. Sitzungen einsehen, Befehle freigeben und Code-Diffs prüfen.",
+        "promotionalText": "Begleit-Client zur mobilen Fernsteuerung von Desktop-Arbeitsbereichen. Sitzungen einsehen, Terminal-Befehle freigeben und Code-Diffs prüfen.",
         "keywords": "antigravity,fernsteuerung,ki coding,tailscale,code diff,entwickler,agent,terminal,mac",
         "whatsNew": "• Erstveröffentlichung: Verbindung zum lokalen Mac-Dienst über LAN und Tailscale\n• Anzeige von Gesprächsverlauf, Denkschritten, Tool-Aufrufen und Modell-Kontingenten\n• Fernfreigabe von Terminal-Befehlen und Implementierungsplänen\n• Offline-Demomodus und Unterstützung für 12 Sprachen",
         "description": (
@@ -198,7 +198,7 @@ METADATA = {
     "es-ES": {
         "name": "AGY Remote",
         "subtitle": "Control remoto para IDE de IA",
-        "promotionalText": "Cliente complementario creado para ofrecer control remoto móvil al entorno de escritorio. Permite ver sesiones, aprobar comandos de terminal y revisar cambios de código.",
+        "promotionalText": "Cliente complementario de control remoto móvil para el entorno de escritorio. Consulta sesiones, aprueba comandos y revisa cambios de código.",
         "keywords": "antigravity,control remoto,ia programación,tailscale,diff código,desarrollador,agente,mac",
         "whatsNew": "• Versión inicial: Conexión al servicio local en Mac mediante LAN y Tailscale\n• Visualización de conversaciones, pasos de razonamiento, herramientas y cuota del modelo\n• Aprobación remota de comandos de terminal y planes de implementación\n• Modo Demo sin conexión e interfaz en 12 idiomas",
         "description": (
@@ -212,7 +212,7 @@ METADATA = {
     "ru": {
         "name": "AGY Remote",
         "subtitle": "Пульт для ИИ-среды разработки",
-        "promotionalText": "Вспомогательный клиент для мобильного управления рабочей средой на Mac, в которой нет встроенного удаленного доступа. Просмотр диалогов, подтверждение команд и проверка Diff.",
+        "promotionalText": "Вспомогательный клиент для мобильного управления рабочей средой на Mac. Просмотр диалогов, подтверждение команд и проверка изменений кода.",
         "keywords": "antigravity,удаленное управление,ии код,tailscale,diff кода,разработка,агент,терминал,mac",
         "whatsNew": "• Первый выпуск: Подключение к локальной службе на Mac по LAN и Tailscale\n• Отображение истории диалогов, шагов рассуждений, вызовов инструментов и лимитов модели\n• Удаленное подтверждение команд терминала и планов реализации\n• Автономный демо-режим и интерфейс на 12 языках",
         "description": (
@@ -226,7 +226,7 @@ METADATA = {
     "pt-BR": {
         "name": "AGY Remote",
         "subtitle": "Controle Remoto para IDE de IA",
-        "promotionalText": "Cliente auxiliar desenvolvido para oferecer controle remoto móvel ao ambiente de desktop. Acompanhe conversas, aprove comandos de terminal e visualize diffs de código.",
+        "promotionalText": "Cliente auxiliar de controle remoto móvel para o ambiente de desktop. Acompanhe conversas, aprove comandos de terminal e veja diffs de código.",
         "keywords": "antigravity,controle remoto,programação ia,tailscale,diff código,desenvolvedor,agente,mac",
         "whatsNew": "• Versão inicial: Conexão ao serviço local no Mac via LAN e Tailscale\n• Exibição do histórico de conversas, etapas de raciocínio, ferramentas e cotas do modelo\n• Aprovação remota de comandos de terminal e planos de implementação\n• Modo Demo offline integrado e suporte a 12 idiomas",
         "description": (
@@ -240,7 +240,7 @@ METADATA = {
     "it": {
         "name": "AGY Remote",
         "subtitle": "Controllo remoto per IDE IA",
-        "promotionalText": "Client ausiliario realizzato per fornire un controllo remoto mobile all'ambiente desktop. Consente di seguire le sessioni, approvare i comandi e consultare i diff del codice.",
+        "promotionalText": "Client ausiliario di controllo remoto mobile per l'ambiente desktop. Segui le sessioni, approva i comandi da terminale e consulta i diff.",
         "keywords": "antigravity,controllo remoto,programmazione ia,tailscale,diff codice,sviluppatore,agente,mac",
         "whatsNew": "• Versione iniziale: Connessione al servizio locale su Mac tramite LAN e Tailscale\n• Visualizzazione di conversazioni, passaggi di ragionamento, strumenti e quote del modello\n• Approvazione remota di comandi da terminale e piani di implementazione\n• Modalità Demo offline e interfaccia in 12 lingue",
         "description": (
@@ -254,7 +254,7 @@ METADATA = {
     "ar-SA": {
         "name": "AGY Remote",
         "subtitle": "تحكم عن بُعد لبيئة البرمجة",
-        "promotionalText": "تطبيق مساعد صُمم لتوفير ميزة التحكم عن بُعد عبر الهاتف لبيئة العمل المكتبية التي تفتقر إليها. يتيح متابعة الجلسات واعتماد الأوامر ومراجعة تعديلات الكود.",
+        "promotionalText": "عميل مساعد يوفر ميزة التحكم عن بُعد عبر الهاتف لبيئة العمل المكتبية. يتيح متابعة الجلسات واعتماد الأوامر ومراجعة تعديلات الكود.",
         "keywords": "antigravity,تحكم عن بعد,برمجة ذكاء اصطناعي,tailscale,مقارنة كود,أدوات مطورين,وكيل ذكي,ماك",
         "whatsNew": "• الإصدار الأول: الاتصال بالخدمة المحلية على جهاز Mac عبر الشبكة المحلية وTailscale\n• عرض سجل المحادثات وخطوات التفكير واستدعاء الأدوات وحصة النموذج المتبقية\n• الموافقة عن بُعد على أوامر الطرفية وخطط التنفيذ\n• وضع تجريبي يعمل دون اتصال ودعم 12 لغة",
         "description": (
