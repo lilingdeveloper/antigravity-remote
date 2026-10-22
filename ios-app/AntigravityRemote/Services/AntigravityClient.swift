@@ -251,6 +251,14 @@ public final class AntigravityClient: ObservableObject {
     private var isNetMonitorRunning = false
     private var networkSwitchTask: Task<Void, Never>?
     private var lastLanUpgradeProbeAt: Date?
+    private var lanFailureStartedAt: Date?
+    private var consecutiveLanFailures: Int = 0
+    private let lanStickinessGraceSeconds: TimeInterval = 10.0
+    private let lanMinFailuresBeforeFallback: Int = 3
+    private var activeProbeTask: Task<URL?, Never>?
+    private var foregroundRecoveryTask: Task<Void, Never>?
+    private var lastForegroundTriggerAt: Date?
+    private var didBecomeActiveObserver: NSObjectProtocol?
 
     private var pendingOptimisticMessages: [ChatMessageItem] = []
     private var lastMessageSentAt: Date?
@@ -404,6 +412,12 @@ public final class AntigravityClient: ObservableObject {
         bonjourBrowser = browser
     }
 
+    private func restartBonjourBrowser() {
+        bonjourBrowser?.cancel()
+        bonjourBrowser = nil
+        startBonjourBrowser()
+    }
+
     private func handleBonjourResults(_ results: Set<NWBrowser.Result>) {
         guard !isDemoMode else { return }
         for res in results {
@@ -435,10 +449,10 @@ public final class AntigravityClient: ObservableObject {
 
     private func evaluateBonjourDiscoveredHost(_ ip: String, port: Int) async {
         guard !ip.isEmpty, !isDemoMode else { return }
-        if fallbackLanHost.isEmpty || (!isConnected && fallbackLanHost != ip) {
+        if fallbackLanHost.isEmpty || (!isConnected && fallbackLanHost != ip) || routeKind != .lanDirect {
             guard let pingURL = URL(string: "http://\(ip):\(port)/api/v1/ping") else { return }
             var req = URLRequest(url: pingURL)
-            req.timeoutInterval = 1.0
+            req.timeoutInterval = 1.2
             req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             if let (data, resp) = try? await fastSession.data(for: req),
                let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
@@ -447,7 +461,7 @@ public final class AntigravityClient: ObservableObject {
                 print("[AntigravityClient] Bonjour 自动发现局域网 Mac: \(ip):\(port)")
                 self.fallbackLanHost = ip
                 UserDefaults.standard.set(ip, forKey: "agy.fallbackLanHost")
-                if !self.isConnected {
+                if !self.isConnected || self.routeKind != .lanDirect {
                     await self.reprobeAndSwitchRouteIfNeeded(force: true)
                 }
             }
@@ -472,11 +486,13 @@ public final class AntigravityClient: ObservableObject {
         UNUserNotificationCenter.current().add(req)
     }
 
-    private func endCurrentBackgroundTask() {
-        guard bgTaskID != .invalid else { return }
-        let tid = bgTaskID
-        bgTaskID = .invalid
-        UIApplication.shared.endBackgroundTask(tid)
+    private func stopPollingAndSseTasks() {
+        foregroundRecoveryTask?.cancel()
+        foregroundRecoveryTask = nil
+        networkSwitchTask?.cancel()
+        networkSwitchTask = nil
+        activeProbeTask?.cancel()
+        activeProbeTask = nil
         pollTask?.cancel()
         pollTask = nil
         sseTask?.cancel()
@@ -484,6 +500,15 @@ public final class AntigravityClient: ObservableObject {
         sseConnectedCascadeId = ""
         sseConnectedBaseURL = nil
         isSSEActive = false
+    }
+
+    private func endCurrentBackgroundTask() {
+        if bgTaskID != .invalid {
+            let tid = bgTaskID
+            bgTaskID = .invalid
+            UIApplication.shared.endBackgroundTask(tid)
+        }
+        stopPollingAndSseTasks()
     }
 
     nonisolated private static func localInterfaceSnapshot() -> String {
@@ -560,6 +585,15 @@ public final class AntigravityClient: ObservableObject {
                 self?.handleWillEnterForeground()
             }
         }
+        didBecomeActiveObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.handleDidBecomeActive()
+            }
+        }
     }
 
     private func startNetworkPathMonitor() {
@@ -583,23 +617,23 @@ public final class AntigravityClient: ObservableObject {
         guard lastNetworkSignature != newSignature else { return }
         lastNetworkSignature = newSignature
 
-        // 1. 清理路由缓存并唤醒 Tailnet 底层网络栈（不销毁本地端口转发，避免竞态断开）
-        invalidateRouteCache()
+        // 若前台恢复任务正在运行，交由前台恢复统一协调，避免互相取消请求
+        if foregroundRecoveryTask != nil { return }
+
         TailnetManager.shared.wake(reason: "网络环境切换: \(reason)", resetLocalForwards: false)
 
-        // 2. 彻底销毁旧套接字池，避免残留 TCP 阻滞
-        rebuildFastSession()
-
-        // 3. 网络环境突变时 (Wi-Fi <-> 5G / VPN)，进行多阶段渐进式竞速探测（兼容蜂窝/DERP 握手延迟）
+        // 网络环境突变时 (Wi-Fi <-> 5G / VPN)，优先检查局域网是否可达，不主动中断正在正常工作的局域网连接
         networkSwitchTask?.cancel()
         networkSwitchTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            let checkpointsMs = [250, 950, 1400]
-            for (idx, delayMs) in checkpointsMs.enumerated() {
+            let checkpointsMs = [200, 900]
+            for delayMs in checkpointsMs {
                 try? await Task.sleep(for: .milliseconds(delayMs))
                 guard !Task.isCancelled else { return }
-                if idx == 0 || !self.isConnected || self.routeKind != .lanDirect {
+                if !self.isConnected || self.routeKind != .lanDirect {
                     await self.reprobeAndSwitchRouteIfNeeded(force: true)
+                } else {
+                    await self.probeLanUpgradeIfNeeded()
                 }
             }
         }
@@ -610,7 +644,7 @@ public final class AntigravityClient: ObservableObject {
         guard let newBase = try? await resolveBestBaseURL(forceProbe: force) else {
             return
         }
-        if previousBase != newBase {
+        if previousBase != newBase || !isConnected {
             reconnectSSEIfActive()
             await fetchStatus()
         }
@@ -641,18 +675,75 @@ public final class AntigravityClient: ObservableObject {
     }
 
     private func handleWillEnterForeground() {
+        triggerForegroundRecovery(reason: "willEnterForeground")
+    }
+
+    private func handleDidBecomeActive() {
+        // 首次启动时 pollTask 已在 init 中启动；仅在从后台切回或轮询已停止/未连接时触发恢复
+        if pollTask == nil || !isConnected || isReconnecting {
+            triggerForegroundRecovery(reason: "didBecomeActive")
+        }
+    }
+
+    private func triggerForegroundRecovery(reason: String) {
+        guard !isDemoMode else { return }
+        if let last = lastForegroundTriggerAt, Date().timeIntervalSince(last) < 0.8 {
+            return
+        }
+        lastForegroundTriggerAt = Date()
+
         if bgTaskID != .invalid {
             UIApplication.shared.endBackgroundTask(bgTaskID)
             bgTaskID = .invalid
         }
-        invalidateRouteCache()
-        rebuildFastSession()
-        startPollingLoop()
-        if !currentCascadeId.isEmpty {
-            reconnectSSEIfActive()
-        }
-        Task { @MainActor in
-            await self.reprobeAndSwitchRouteIfNeeded(force: true)
+
+        // 1. 先停止所有残留旧任务，彻底消除并发取消死锁
+        stopPollingAndSseTasks()
+        recordLanSuccess()
+        etagByPath.removeAll()
+        lastNetworkSignature = Self.localInterfaceSnapshot() + "|\(netPathMonitor.currentPath.status == .satisfied ? "up" : "down")"
+
+        // 2. 重建干净的 URLSession，重启 Bonjour 与唤醒 Tailnet 转发
+        rebuildFastSession(force: true)
+        restartBonjourBrowser()
+        TailnetManager.shared.wake(reason: "App 回到前台 (\(reason))", resetLocalForwards: true)
+
+        // 3. 串行渐进式前台重连（兼容 iOS 从后台唤醒 Wi-Fi 套接字的 0~1.5s 恢复窗口）
+        foregroundRecoveryTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.foregroundRecoveryTask = nil }
+
+            guard self.hasConfiguredHost else {
+                self.startPollingLoop(skipInitialRefresh: false)
+                return
+            }
+
+            let backoffDelaysMs = [0, 250, 600, 1200, 2200]
+            for delayMs in backoffDelaysMs {
+                if delayMs > 0 {
+                    try? await Task.sleep(for: .milliseconds(delayMs))
+                }
+                guard !Task.isCancelled else { return }
+
+                // 强制优先探测局域网（若局域网可达直接锁定局域网）
+                _ = try? await self.resolveBestBaseURL(forceProbe: true)
+                await self.fetchStatus()
+                if self.isConnected {
+                    break
+                }
+            }
+
+            guard !Task.isCancelled else { return }
+            if self.isConnected {
+                await self.fetchModels()
+                await self.fetchConversations()
+                if !self.currentCascadeId.isEmpty {
+                    await self.fetchConversationDetail(cascadeId: self.currentCascadeId)
+                    await self.fetchDiffsAndArtifacts(cascadeId: self.currentCascadeId)
+                    self.ensureSSESubscription(cascadeId: self.currentCascadeId)
+                }
+            }
+            self.startPollingLoop(skipInitialRefresh: true)
         }
     }
 
@@ -790,38 +881,58 @@ public final class AntigravityClient: ObservableObject {
         let rttMs: Int
     }
 
+    private func recordLanSuccess() {
+        lanFailureStartedAt = nil
+        consecutiveLanFailures = 0
+    }
+
+    /// 局域网黏性保持策略：已在局域网连接时，除非局域网连续失败 >= 3 次且持续时间 >= 10 秒，否则绝不切换到 Tailscale
+    private func shouldStayStickyOnLanAfterFailure() -> Bool {
+        let now = Date()
+        if lanFailureStartedAt == nil {
+            lanFailureStartedAt = now
+        }
+        consecutiveLanFailures += 1
+        let elapsed = now.timeIntervalSince(lanFailureStartedAt ?? now)
+        return elapsed < lanStickinessGraceSeconds || consecutiveLanFailures < lanMinFailuresBeforeFallback
+    }
+
     private func collectCandidates() -> [CandidateType] {
         let port = serverPort
-        var hostsToInspect: [String] = []
+        var lanHosts: [String] = []
+        var tailscaleHosts: [String] = []
         let cleanServer = serverHost.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanLan = fallbackLanHost.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        if !cleanServer.isEmpty { hostsToInspect.append(cleanServer) }
-        if !cleanLan.isEmpty && cleanLan != cleanServer { hostsToInspect.append(cleanLan) }
+        for host in [cleanLan, cleanServer] where !host.isEmpty {
+            if TailnetManager.isTailnetHost(host) {
+                if !tailscaleHosts.contains(host) { tailscaleHosts.append(host) }
+            } else {
+                if !lanHosts.contains(host) { lanHosts.append(host) }
+            }
+        }
 
         var candidates: [CandidateType] = []
 
-        for host in hostsToInspect {
-            if TailnetManager.isTailnetHost(host) {
-                // Tailscale 主机
-                if TailnetManager.shared.systemTailscaleActive {
-                    if let u = URL(string: "http://\(host):\(port)") {
-                        candidates.append(.direct(url: u, kind: .systemTailscale, desc: "Tailscale 直连 (\(host))"))
-                    }
-                } else {
-                    // 内置引擎穿透
-                    if TailnetManager.shared.isEnabled {
-                        candidates.append(.embeddedTailscale(host: host, port: port, desc: "内置 Tailscale (\(host))"))
-                    }
-                    // 直连兜底
-                    if let u = URL(string: "http://\(host):\(port)") {
-                        candidates.append(.direct(url: u, kind: .systemTailscale, desc: "Tailscale 直连 (\(host))"))
-                    }
+        // 1. 局域网候选始终排在最前
+        for host in lanHosts {
+            if let u = URL(string: "http://\(host):\(port)") {
+                candidates.append(.direct(url: u, kind: .lanDirect, desc: "局域网极速 (\(host))"))
+            }
+        }
+
+        // 2. Tailscale 候选作为后备
+        for host in tailscaleHosts {
+            if TailnetManager.shared.systemTailscaleActive {
+                if let u = URL(string: "http://\(host):\(port)") {
+                    candidates.append(.direct(url: u, kind: .systemTailscale, desc: "Tailscale 直连 (\(host))"))
                 }
             } else {
-                // 局域网 / 本地主机
+                if TailnetManager.shared.isEnabled {
+                    candidates.append(.embeddedTailscale(host: host, port: port, desc: "内置 Tailscale (\(host))"))
+                }
                 if let u = URL(string: "http://\(host):\(port)") {
-                    candidates.append(.direct(url: u, kind: .lanDirect, desc: "局域网极速 (\(host))"))
+                    candidates.append(.direct(url: u, kind: .systemTailscale, desc: "Tailscale 直连 (\(host))"))
                 }
             }
         }
@@ -845,46 +956,91 @@ public final class AntigravityClient: ObservableObject {
             return directURL
         }
 
-        let candidates = collectCandidates()
-
-        // 并发竞速探测 /api/v1/ping，谁先返回有效响应就优先选用
-        if let winner = await raceCandidates(candidates) {
-            let previousBase = cachedBaseURL
-            cachedBaseURL = winner.baseURL
-            lastRouteVerifiedAt = Date()
-            routeKind = winner.kind
-            latencyMs = winner.rttMs
-            connectionRouteDescription = "\(winner.description) · \(winner.rttMs)ms"
-
-            if previousBase != nil && previousBase != winner.baseURL {
-                reconnectSSEIfActive()
-            }
-            return winner.baseURL
-        }
-
-        // 探测全部失败：绝不将失败地址写入 cachedBaseURL 污染缓存！
-        cachedBaseURL = nil
-        lastRouteVerifiedAt = nil
-
-        let port = serverPort
-        if let firstCandidate = candidates.first {
-            switch firstCandidate {
-            case .direct(let url, let kind, let desc):
-                routeKind = kind
-                connectionRouteDescription = "\(desc) (未联通)"
+        // 2. 合并并发选路探测，避免多个并发请求同时发起重复探测
+        if let existingProbe = activeProbeTask {
+            if let url = await existingProbe.value {
                 return url
-            case .embeddedTailscale(let host, _, let desc):
-                routeKind = .embeddedTailnet
-                connectionRouteDescription = "\(desc) (未联通)"
-                if let u = URL(string: "http://\(host):\(port)") { return u }
             }
         }
 
-        guard !cleanHost.isEmpty, let fallback = URL(string: "http://\(cleanHost):\(port)") else {
-            connectionRouteDescription = "待扫码配对或配置 Mac 地址"
+        let probeTask = Task<URL?, Never> { @MainActor [weak self] in
+            guard let self else { return nil }
+            let candidates = self.collectCandidates()
+            let lanCandidates = candidates.filter { $0.isLan }
+            let otherCandidates = candidates.filter { !$0.isLan }
+
+            // 阶段 A：局域网绝对优先 —— 只要配置了局域网地址，先单独探测局域网，局域网通畅时绝不触碰 Tailscale
+            if !lanCandidates.isEmpty {
+                if let lanWinner = await self.raceCandidates(lanCandidates) {
+                    let previousBase = self.cachedBaseURL
+                    self.recordLanSuccess()
+                    self.cachedBaseURL = lanWinner.baseURL
+                    self.lastRouteVerifiedAt = Date()
+                    self.routeKind = .lanDirect
+                    self.latencyMs = lanWinner.rttMs
+                    self.connectionRouteDescription = "\(lanWinner.description) · \(lanWinner.rttMs)ms"
+                    if previousBase != nil && previousBase != lanWinner.baseURL {
+                        self.reconnectSSEIfActive()
+                    }
+                    return lanWinner.baseURL
+                }
+
+                // 若当前已处于局域网模式，且局域网仅短暂抖动（未满 10 秒持续故障），保持锁定在局域网，不切换到 Tailscale
+                if self.routeKind == .lanDirect,
+                   self.shouldStayStickyOnLanAfterFailure(),
+                   case .direct(let lanURL, _, _) = lanCandidates[0] {
+                    self.cachedBaseURL = lanURL
+                    return lanURL
+                }
+            }
+
+            // 阶段 B：仅当局域网不可用（或局域网持续故障超过 10 秒）时，才探测 Tailscale 后备通道
+            if !otherCandidates.isEmpty, let tsWinner = await self.raceCandidates(otherCandidates) {
+                let previousBase = self.cachedBaseURL
+                self.cachedBaseURL = tsWinner.baseURL
+                self.lastRouteVerifiedAt = Date()
+                self.routeKind = tsWinner.kind
+                self.latencyMs = tsWinner.rttMs
+                self.connectionRouteDescription = "\(tsWinner.description) · \(tsWinner.rttMs)ms"
+                if previousBase != nil && previousBase != tsWinner.baseURL {
+                    self.reconnectSSEIfActive()
+                }
+                return tsWinner.baseURL
+            }
+
+            // 探测全部失败：若之前在局域网则优先保留局域网地址供后续重试
+            self.cachedBaseURL = nil
+            self.lastRouteVerifiedAt = nil
+
+            let port = self.serverPort
+            if let firstCandidate = candidates.first {
+                switch firstCandidate {
+                case .direct(let url, let kind, let desc):
+                    self.routeKind = kind
+                    self.connectionRouteDescription = "\(desc) (未联通)"
+                    return url
+                case .embeddedTailscale(let host, _, let desc):
+                    self.routeKind = .embeddedTailnet
+                    self.connectionRouteDescription = "\(desc) (未联通)"
+                    if let u = URL(string: "http://\(host):\(port)") { return u }
+                }
+            }
+
+            guard !cleanHost.isEmpty, let fallback = URL(string: "http://\(cleanHost):\(port)") else {
+                self.connectionRouteDescription = "待扫码配对或配置 Mac 地址"
+                return nil
+            }
+            return fallback
+        }
+
+        activeProbeTask = probeTask
+        let resolved = await probeTask.value
+        activeProbeTask = nil
+
+        guard let finalURL = resolved else {
             throw URLError(.badURL)
         }
-        return fallback
+        return finalURL
     }
 
     private func raceCandidates(
@@ -903,7 +1059,7 @@ public final class AntigravityClient: ObservableObject {
                             return .failure(isLan: kind == .lanDirect)
                         }
                         var req = URLRequest(url: pingURL)
-                        req.timeoutInterval = 1.8
+                        req.timeoutInterval = 1.6
                         req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                         let start = DispatchTime.now().uptimeNanoseconds
                         do {
@@ -939,7 +1095,7 @@ public final class AntigravityClient: ObservableObject {
                             }
 
                             var req = URLRequest(url: pingURL)
-                            req.timeoutInterval = 1.2
+                            req.timeoutInterval = 1.4
                             req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
                             let (data, resp) = try await session.data(for: req)
                             guard let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
@@ -968,24 +1124,20 @@ public final class AntigravityClient: ObservableObject {
                 switch outcome {
                 case .success(let res):
                     if res.kind == .lanDirect {
-                        // LAN 胜出：最高优先级，立即采用
                         group.cancelAll()
                         return res
                     } else {
-                        // Tailscale / 公网通道先返回
                         if tailscaleWinner == nil {
                             tailscaleWinner = res
                         }
                         if pendingLanCount == 0 {
-                            // 没有正在进行的局域网探测，立即采用 Tailscale
                             group.cancelAll()
                             return tailscaleWinner
                         }
-                        // 尚有局域网探测在进行中：启动 250ms 宽限等待任务
                         if !isWaitingGracePeriod {
                             isWaitingGracePeriod = true
                             group.addTask {
-                                try? await Task.sleep(for: .milliseconds(250))
+                                try? await Task.sleep(for: .milliseconds(800))
                                 return .graceTimeout
                             }
                         }
@@ -995,14 +1147,12 @@ public final class AntigravityClient: ObservableObject {
                     if isLan {
                         pendingLanCount = max(0, pendingLanCount - 1)
                         if pendingLanCount == 0, let winner = tailscaleWinner {
-                            // 所有局域网探测均已宣告失败，无需再等待宽限期
                             group.cancelAll()
                             return winner
                         }
                     }
 
                 case .graceTimeout:
-                    // 250ms 宽限期到，局域网未能更优先完成，采用已就绪的 Tailscale
                     if let winner = tailscaleWinner {
                         group.cancelAll()
                         return winner
@@ -1028,7 +1178,7 @@ public final class AntigravityClient: ObservableObject {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        req.timeoutInterval = (method == "POST") ? 45 : 2.2
+        req.timeoutInterval = (method == "POST") ? 45 : 3.0
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         if !accessToken.isEmpty {
             req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -1044,6 +1194,14 @@ public final class AntigravityClient: ObservableObject {
         do {
             let (data, resp) = try await fastSession.data(for: req)
             let rtt = max(1, Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000))
+            if routeKind == .lanDirect {
+                recordLanSuccess()
+            }
+            if !isConnected || isReconnecting {
+                isConnected = true
+                isReconnecting = false
+                lastError = nil
+            }
             if let httpResp = resp as? HTTPURLResponse {
                 if httpResp.statusCode == 304 {
                     latencyMs = rtt
@@ -1068,12 +1226,38 @@ public final class AntigravityClient: ObservableObject {
             if error is HTTPNotModifiedSignal {
                 throw error
             }
-            // 若当前缓存路由失效 (例如从 Wi-Fi 切换到 5G 或 Tailscale 切换)，立即强制重选最优路由并无感重试一次
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw error
+            }
             if retryOnFailure {
+                // 若当前在局域网，且处于 10 秒局域网黏性保护期内，直接在原局域网通道上重试，不销毁会话池、不切 Tailscale
+                if routeKind == .lanDirect && shouldStayStickyOnLanAfterFailure() {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    let (data, resp) = try await fastSession.data(for: req)
+                    let rtt = max(1, Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000))
+                    recordLanSuccess()
+                    isConnected = true
+                    isReconnecting = false
+                    lastError = nil
+                    if let httpResp = resp as? HTTPURLResponse {
+                        if httpResp.statusCode == 304 {
+                            throw HTTPNotModifiedSignal.notModified
+                        }
+                        if !(200...299).contains(httpResp.statusCode) {
+                            let errText = String(data: data, encoding: .utf8) ?? "HTTP \(httpResp.statusCode)"
+                            throw NSError(domain: "AntigravityClient", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: errText])
+                        }
+                    }
+                    latencyMs = rtt
+                    lastRouteVerifiedAt = Date()
+                    connectionRouteDescription = "\(routeKind.rawValue) · \(rtt)ms"
+                    return try JSONDecoder().decode(T.self, from: data)
+                }
+
+                // 局域网持续不可达超过 10 秒（或当前非局域网通道失效），重新选路并重试（绝不在请求中途调用 rebuildFastSession 以免误杀并发请求）
                 let oldBase = cachedBaseURL
                 invalidateRouteCache()
-                TailnetManager.shared.wake(reason: "请求失败触发通道重选", resetLocalForwards: false)
-                rebuildFastSession()
+                TailnetManager.shared.wake(reason: "请求失败触发通道重选", resetLocalForwards: true)
                 let newBase = try await resolveBestBaseURL(forceProbe: true)
                 if oldBase != newBase {
                     reconnectSSEIfActive()
@@ -1090,6 +1274,12 @@ public final class AntigravityClient: ObservableObject {
                         throw NSError(domain: "AntigravityClient", code: httpResp.statusCode, userInfo: [NSLocalizedDescriptionKey: errText])
                     }
                 }
+                if routeKind == .lanDirect {
+                    recordLanSuccess()
+                }
+                isConnected = true
+                isReconnecting = false
+                lastError = nil
                 return try JSONDecoder().decode(T.self, from: data)
             }
             throw error
@@ -1124,6 +1314,7 @@ public final class AntigravityClient: ObservableObject {
             return
         }
         await fetchStatus()
+        guard isConnected else { return }
         await fetchModels()
         await fetchConversations()
         if !currentCascadeId.isEmpty {
@@ -1189,6 +1380,9 @@ public final class AntigravityClient: ObservableObject {
             isReconnecting = false
             lastError = nil
         } catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                return
+            }
             isReconnecting = true
             isConnected = false
             lastError = error.localizedDescription
@@ -2188,15 +2382,18 @@ public final class AntigravityClient: ObservableObject {
             lanCandidate = nil
         }
 
-        // 情况 A：当前处于局域网直连，探测局域网是否仍然存活；一旦断开或切换到外部网络，秒级平滑切回 Tailscale
+        // 情况 A：当前处于局域网直连，优先信任常规 API 通信心跳；仅当持续故障超过 10 秒且连续失败 >= 3 次时才回退至 Tailscale
         if routeKind == .lanDirect {
+            if isConnected, let lastVerified = lastRouteVerifiedAt, Date().timeIntervalSince(lastVerified) < 3.5 {
+                return
+            }
             guard let activeBase = cachedBaseURL,
                   let pingURL = URL(string: "/api/v1/ping", relativeTo: activeBase) else {
                 await reprobeAndSwitchRouteIfNeeded(force: true)
                 return
             }
             var req = URLRequest(url: pingURL)
-            req.timeoutInterval = 0.9
+            req.timeoutInterval = 1.8
             req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
             let start = DispatchTime.now().uptimeNanoseconds
             do {
@@ -2205,31 +2402,42 @@ public final class AntigravityClient: ObservableObject {
                    let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                    (json["ok"] as? Bool) == true {
                     let rtt = max(1, Int((DispatchTime.now().uptimeNanoseconds - start) / 1_000_000))
+                    recordLanSuccess()
                     latencyMs = rtt
                     lastRouteVerifiedAt = Date()
+                    isConnected = true
+                    isReconnecting = false
+                    lastError = nil
                     if let host = activeBase.host {
                         connectionRouteDescription = "局域网极速 (\(host)) · \(rtt)ms"
                     }
                     return
                 }
             } catch {
-                // 局域网探测失败，立即触发无缝回退至 Tailscale
+                if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                    return
+                }
             }
+
+            // 局域网黏性保持：未满 10 秒持续故障（或连续失败不足 3 次）时，继续留在局域网，不切换到 Tailscale
+            if shouldStayStickyOnLanAfterFailure() {
+                return
+            }
+
             invalidateRouteCache()
-            TailnetManager.shared.wake(reason: "局域网不可达自动回退 Tailscale", resetLocalForwards: false)
-            rebuildFastSession()
+            TailnetManager.shared.wake(reason: "局域网持续不可达超过 10s 自动回退 Tailscale", resetLocalForwards: true)
             await reprobeAndSwitchRouteIfNeeded(force: true)
             return
         }
 
-        // 情况 B：当前处于非局域网直连（如 Tailscale 通道或重连探测态），尝试探测是否有局域网极速通道可用以自动升级
+        // 情况 B：当前处于非局域网直连（如 Tailscale 通道或重连探测态），尝试探测是否有局域网极速通道可用以自动切回局域网
         guard let targetHost = lanCandidate,
               let lanPingURL = URL(string: "http://\(targetHost):\(serverPort)/api/v1/ping") else {
             return
         }
 
         var req = URLRequest(url: lanPingURL)
-        req.timeoutInterval = 0.8
+        req.timeoutInterval = 1.4
         req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
 
         let start = DispatchTime.now().uptimeNanoseconds
@@ -2244,6 +2452,7 @@ public final class AntigravityClient: ObservableObject {
             guard let newBase = URL(string: "http://\(targetHost):\(serverPort)") else { return }
 
             let previousBase = cachedBaseURL
+            recordLanSuccess()
             cachedBaseURL = newBase
             lastRouteVerifiedAt = Date()
             routeKind = .lanDirect
@@ -2259,18 +2468,23 @@ public final class AntigravityClient: ObservableObject {
                 await fetchStatus()
             }
         } catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled {
+                return
+            }
             // 局域网尚不可达，若当前处于未连接状态则唤醒 Tailnet 尝试恢复连接
             if !isConnected {
-                TailnetManager.shared.wake(reason: "未连接状态唤醒 Tailnet", resetLocalForwards: false)
+                TailnetManager.shared.wake(reason: "未连接状态唤醒 Tailnet", resetLocalForwards: true)
                 await reprobeAndSwitchRouteIfNeeded(force: true)
             }
         }
     }
 
-    private func startPollingLoop() {
+    private func startPollingLoop(skipInitialRefresh: Bool = false) {
         pollTask?.cancel()
         pollTask = Task { [weak self] in
-            await self?.refreshAll()
+            if !skipInitialRefresh {
+                await self?.refreshAll()
+            }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(1200))
                 guard let self, !Task.isCancelled else { return }
@@ -2288,15 +2502,33 @@ public final class AntigravityClient: ObservableObject {
                 }
 
                 self.pollTickCount += 1
+
+                // 若当前尚未连上，仅快速轮询 fetchStatus 探活，避免在断连时堆积多个无效请求导致重连卡死；一旦恢复连接立即拉取全量数据
+                if !self.isConnected {
+                    await self.fetchStatus()
+                    if self.isConnected {
+                        await self.fetchModels()
+                        await self.fetchConversations()
+                        if !self.currentCascadeId.isEmpty {
+                            await self.fetchConversationDetail(cascadeId: self.currentCascadeId)
+                            await self.fetchDiffsAndArtifacts(cascadeId: self.currentCascadeId)
+                            self.ensureSSESubscription(cascadeId: self.currentCascadeId)
+                        }
+                    }
+                    continue
+                }
+
                 if self.models.isEmpty || (self.pollTickCount % 10 == 0) {
                     await self.fetchModels()
                 }
-                let needsHighFrequency = !self.isConnected || self.isGenerating || !self.isSSEActive
+                let needsHighFrequency = self.isGenerating || !self.isSSEActive
                 if needsHighFrequency || (self.pollTickCount % 5 == 0) {
                     await self.fetchStatus()
-                    await self.fetchConversations()
-                    if !self.currentCascadeId.isEmpty {
-                        await self.fetchConversationDetail(cascadeId: self.currentCascadeId)
+                    if self.isConnected {
+                        await self.fetchConversations()
+                        if !self.currentCascadeId.isEmpty {
+                            await self.fetchConversationDetail(cascadeId: self.currentCascadeId)
+                        }
                     }
                 }
             }

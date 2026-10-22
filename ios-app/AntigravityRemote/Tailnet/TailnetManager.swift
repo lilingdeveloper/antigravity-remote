@@ -353,7 +353,7 @@ public final class TailnetManager: ObservableObject {
                 let away = self.backgroundedAt.map { Date().timeIntervalSince($0) } ?? 0
                 self.backgroundedAt = nil
                 if away >= 5 {
-                    self.wake(reason: "回前台 (\(Int(away))s)", resetLocalForwards: false)
+                    self.wake(reason: "回前台 (\(Int(away))s)", resetLocalForwards: true)
                 }
             }
         })
