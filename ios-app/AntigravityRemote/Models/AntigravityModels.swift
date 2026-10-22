@@ -174,6 +174,7 @@ public struct ConversationDetailResponse: Codable {
     public let isGenerating: Bool?
     public let stepCount: Int?
     public let activeModel: String?
+    public let activePermissionMode: String?
     public let pendingInteraction: PendingInteractionItem?
     public let queuedMessages: [QueuedMessageItem]?
     public let messages: [ChatMessageItem]?

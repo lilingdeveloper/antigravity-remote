@@ -23,6 +23,9 @@ class AntigravityRpcClient {
     this._transcriptCache = new Map();
     // 记录新建的空会话及其自定义标题: cascadeId -> { id, title, workspaceUri, createdAt }
     this._pendingBlankConversations = new Map();
+    // 记录每个会话及全局最近已知的权限执行模式 ('review' | 'auto' | 'turbo')
+    this._cascadePermissionModes = new Map();
+    this._lastKnownPermissionMode = 'turbo';
   }
 
   /**
@@ -469,8 +472,9 @@ class AntigravityRpcClient {
       checkedAt: Date.now()
     });
 
-    // 结合 generatorMetadata 最新项确认当前会话实际模型與上下文窗口容量
+    // 结合 generatorMetadata 最新项确认当前会话实际模型、权限模式与上下文窗口容量
     const genMeta = Array.isArray(trajectory.generatorMetadata) ? trajectory.generatorMetadata : [];
+    let gmPermissionMode = '';
     if (genMeta.length > 0) {
       const lastGen = genMeta[genMeta.length - 1];
       const genModel =
@@ -479,7 +483,42 @@ class AntigravityRpcClient {
       if (genModel) {
         activeModel = genModel;
       }
+      for (let i = genMeta.length - 1; i >= 0; i--) {
+        const tc = genMeta[i] && genMeta[i].plannerConfig && genMeta[i].plannerConfig.toolConfig;
+        if (!tc) continue;
+        const preset = tc.permissionConfig && tc.permissionConfig.effectivePermissionPreset;
+        const policy = tc.runCommand && tc.runCommand.autoCommandConfig && tc.runCommand.autoCommandConfig.autoExecutionPolicy;
+        const mapped = this._mapPolicyToPermissionMode(preset) || this._mapPolicyToPermissionMode(policy);
+        if (mapped) {
+          gmPermissionMode = mapped;
+          this._lastKnownPermissionMode = mapped;
+          break;
+        }
+      }
     }
+
+    let stepPermissionMode = '';
+    for (let i = rawSteps.length - 1; i >= 0; i--) {
+      const ui = rawSteps[i] && rawSteps[i].userInput;
+      if (!ui) continue;
+      const uc = ui.userConfig || ui.lastUserConfig;
+      const tc = uc && uc.plannerConfig && uc.plannerConfig.toolConfig;
+      if (!tc) continue;
+      const preset = tc.permissionConfig && tc.permissionConfig.effectivePermissionPreset;
+      const policy = tc.runCommand && tc.runCommand.autoCommandConfig && tc.runCommand.autoCommandConfig.autoExecutionPolicy;
+      const mapped = this._mapPolicyToPermissionMode(preset) || this._mapPolicyToPermissionMode(policy);
+      if (mapped) {
+        stepPermissionMode = mapped;
+        break;
+      }
+    }
+
+    const activePermissionMode =
+      this._cascadePermissionModes.get(cascadeId) ||
+      gmPermissionMode ||
+      stepPermissionMode ||
+      this._lastKnownPermissionMode ||
+      'turbo';
 
     // 若当前轮次刚刚完成且该会话有排队待发送的消息，立即触发自动发送
     if (!isGenerating && !pendingInteraction && (this._messageQueues.get(cascadeId) || []).length > 0) {
@@ -538,6 +577,7 @@ class AntigravityRpcClient {
       isGenerating,
       stepCount: rawSteps.length,
       activeModel,
+      activePermissionMode,
       contextUsage,
       pendingInteraction,
       queuedMessages: this.getQueuedMessages(cascadeId),
@@ -846,6 +886,21 @@ class AntigravityRpcClient {
     };
   }
 
+  _mapPolicyToPermissionMode(rawVal = '') {
+    const raw = String(rawVal || '').trim().toUpperCase();
+    if (!raw) return '';
+    if (raw.includes('TURBO') || raw.includes('EAGER') || raw.includes('ALWAYS')) {
+      return 'turbo';
+    }
+    if (raw.includes('OFF') || raw.includes('DISABLED') || raw.includes('REVIEW') || raw.includes('CAUTIOUS')) {
+      return 'review';
+    }
+    if (raw.includes('AUTO')) {
+      return 'auto';
+    }
+    return '';
+  }
+
   _mapPermissionModeToPolicy(permissionMode = '') {
     const mode = String(permissionMode || '').trim().toLowerCase();
     if (mode === 'review' || mode === 'off' || mode === 'disabled') {
@@ -858,6 +913,30 @@ class AntigravityRpcClient {
       return 'CASCADE_COMMANDS_AUTO_EXECUTION_EAGER';
     }
     return '';
+  }
+
+  _mapPermissionModeToPreset(permissionMode = '') {
+    const mode = String(permissionMode || '').trim().toLowerCase();
+    if (mode === 'review' || mode === 'off' || mode === 'disabled') {
+      return 'AGENT_PERMISSION_PRESET_REVIEW';
+    }
+    if (mode === 'auto') {
+      return 'AGENT_PERMISSION_PRESET_AUTO';
+    }
+    if (mode === 'turbo' || mode === 'eager') {
+      return 'AGENT_PERMISSION_PRESET_TURBO';
+    }
+    return '';
+  }
+
+  setConversationPermissionMode(cascadeId, permissionMode = '') {
+    const clean = this._mapPolicyToPermissionMode(permissionMode);
+    if (!clean) return this._lastKnownPermissionMode || 'turbo';
+    this._lastKnownPermissionMode = clean;
+    if (cascadeId) {
+      this._cascadePermissionModes.set(cascadeId, clean);
+    }
+    return clean;
   }
 
   /**
@@ -898,7 +977,9 @@ class AntigravityRpcClient {
       baseConfig.plannerConfig.planModel = 'MODEL_PLACEHOLDER_M418';
     }
 
-    const mappedPolicy = this._mapPermissionModeToPolicy(permissionMode);
+    const effectiveMode = permissionMode || this._cascadePermissionModes.get(cascadeId) || this._lastKnownPermissionMode || 'turbo';
+    const mappedPolicy = this._mapPermissionModeToPolicy(effectiveMode);
+    const mappedPreset = this._mapPermissionModeToPreset(effectiveMode);
     if (mappedPolicy) {
       if (!baseConfig.plannerConfig.toolConfig) {
         baseConfig.plannerConfig.toolConfig = { notifyUser: {} };
@@ -910,6 +991,9 @@ class AntigravityRpcClient {
         baseConfig.plannerConfig.toolConfig.runCommand.autoCommandConfig = {};
       }
       baseConfig.plannerConfig.toolConfig.runCommand.autoCommandConfig.autoExecutionPolicy = mappedPolicy;
+      if (mappedPreset && baseConfig.plannerConfig.toolConfig.permissionConfig) {
+        baseConfig.plannerConfig.toolConfig.permissionConfig.effectivePermissionPreset = mappedPreset;
+      }
     }
 
     if (!baseAgentSpec) {

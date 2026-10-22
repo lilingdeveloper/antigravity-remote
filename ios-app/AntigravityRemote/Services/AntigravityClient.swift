@@ -182,13 +182,13 @@ public final class AntigravityClient: ObservableObject {
         didSet { UserDefaults.standard.set(enableNotifications, forKey: "agy.enableNotifications") }
     }
 
-    /// 权限执行模式（审核 / 自动 / Turbo，默认自动）
+    /// 权限执行模式（审核 / 自动 / Turbo，默认与电脑端一致为 Turbo）
     @Published public var permissionMode: AgentPermissionMode = {
-        let raw = UserDefaults.standard.string(forKey: "agy.permissionMode") ?? "auto"
-        return AgentPermissionMode(rawValue: raw) ?? .auto
+        let raw = UserDefaults.standard.string(forKey: "agy.permissionMode_v2") ?? "turbo"
+        return AgentPermissionMode(rawValue: raw) ?? .turbo
     }() {
         didSet {
-            UserDefaults.standard.set(permissionMode.rawValue, forKey: "agy.permissionMode")
+            UserDefaults.standard.set(permissionMode.rawValue, forKey: "agy.permissionMode_v2")
             if permissionMode == .turbo,
                let pending = pendingInteraction,
                pending.kind != "ask_question" && pending.kind != "artifact_approval" {
@@ -215,6 +215,8 @@ public final class AntigravityClient: ObservableObject {
     private var conversationContextUsageCache: [String: ContextUsageInfo] = [:]
     private var conversationActiveModelCache: [String: String] = [:]
     private var userManualModelOverrideByCascadeId: [String: String] = [:]
+    private var conversationActivePermissionCache: [String: AgentPermissionMode] = [:]
+    private var userManualPermissionOverrideByCascadeId: [String: AgentPermissionMode] = [:]
     private var pollTask: Task<Void, Never>?
     private var sseTask: Task<Void, Never>?
     private var sseConnectedCascadeId: String = ""
@@ -1222,6 +1224,25 @@ public final class AntigravityClient: ObservableObject {
         }
     }
 
+    public func selectPermissionModeForCurrentConversation(_ mode: AgentPermissionMode) {
+        permissionMode = mode
+        let cid = currentCascadeId
+        if !cid.isEmpty {
+            userManualPermissionOverrideByCascadeId[cid] = mode
+            conversationActivePermissionCache[cid] = mode
+            if !isDemoMode {
+                Task { [weak self] in
+                    struct EmptyOK: Codable { let ok: Bool? }
+                    _ = try? await self?.request(
+                        path: "/api/v1/conversations/\(cid)/permission",
+                        method: "POST",
+                        body: ["permissionMode": mode.rawValue]
+                    ) as EmptyOK?
+                }
+            }
+        }
+    }
+
     public func fetchConversations() async {
         if isDemoMode { return }
         do {
@@ -1294,6 +1315,11 @@ public final class AntigravityClient: ObservableObject {
         let cachedActive = conversationActiveModelCache[convo.id] ?? ""
         activeConversationModelId = cachedActive
         selectedModelId = userManualModelOverrideByCascadeId[convo.id] ?? cachedActive
+        if let cachedPerm = userManualPermissionOverrideByCascadeId[convo.id] ?? conversationActivePermissionCache[convo.id] {
+            if permissionMode != cachedPerm {
+                permissionMode = cachedPerm
+            }
+        }
 
         if changed {
             pendingOptimisticMessages.removeAll()
@@ -1339,6 +1365,14 @@ public final class AntigravityClient: ObservableObject {
             if let prevModel, prevModel != actModel {
                 // 电脑端该对话切换了新模型，清除旧的手机端临时覆盖
                 userManualModelOverrideByCascadeId.removeValue(forKey: cascadeId)
+            }
+        }
+        if let rawPerm = detail.activePermissionMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           let macPerm = AgentPermissionMode(rawValue: rawPerm) {
+            let prevPerm = conversationActivePermissionCache[cascadeId]
+            conversationActivePermissionCache[cascadeId] = macPerm
+            if let prevPerm, prevPerm != macPerm {
+                userManualPermissionOverrideByCascadeId.removeValue(forKey: cascadeId)
             }
         }
         guard cascadeId == currentCascadeId else { return }
@@ -1403,6 +1437,13 @@ public final class AntigravityClient: ObservableObject {
             let effectiveModel = userManualModelOverrideByCascadeId[cascadeId] ?? actModel
             if selectedModelId != effectiveModel {
                 selectedModelId = effectiveModel
+            }
+        }
+        if let rawPerm = detail.activePermissionMode?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           let macPerm = AgentPermissionMode(rawValue: rawPerm) {
+            let effectivePerm = userManualPermissionOverrideByCascadeId[cascadeId] ?? macPerm
+            if permissionMode != effectivePerm {
+                permissionMode = effectivePerm
             }
         }
 

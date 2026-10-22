@@ -621,6 +621,15 @@ const requestHandler = async (req, res) => {
       return sendJson(res, 200, { ok: true, cascadeId, archived, result });
     }
 
+    // POST /api/v1/conversations/:id/permission (切换当前会话的权限模式)
+    const convoPermissionMatch = pathname.match(/^\/api\/v1\/conversations\/([a-f0-9-]+)\/permission$/i);
+    if (convoPermissionMatch && req.method === 'POST') {
+      const cascadeId = convoPermissionMatch[1];
+      const body = await readJsonBody(req);
+      const mode = rpcClient.setConversationPermissionMode(cascadeId, body.permissionMode || '');
+      return sendJson(res, 200, { ok: true, cascadeId, activePermissionMode: mode });
+    }
+
     // GET /api/v1/terminals
     if (pathname === '/api/v1/terminals' && req.method === 'GET') {
       const cid = urlObj.searchParams.get('conversationId') || '';

@@ -53,6 +53,7 @@ public struct MainRemoteView: View {
     @State private var isChatAtBottom: Bool = true
     @State private var expandedToolIds: Set<String> = []
     @State private var expandedUserTurnIds: Set<String> = []
+    @State private var expandedPlanCodeTurnIds: Set<String> = []
     @State private var expandedDiffIds: Set<String> = []
     @State private var expandedArtifactIds: Set<String> = []
     @State private var copiedInstallCmd: Bool = false
@@ -843,6 +844,14 @@ public struct MainRemoteView: View {
         let id: String
         let userMessage: ChatMessageItem?
         var responseItems: [ChatMessageItem]
+        var fileModificationTools: [ChatMessageItem]
+    }
+
+    private func isFileModificationTool(_ msg: ChatMessageItem) -> Bool {
+        guard msg.role == "tool" else { return false }
+        let name = msg.toolName ?? ""
+        let sum = msg.summary ?? ""
+        return name == "write_file" || name == "edit_file" || sum.hasPrefix("写入文件") || sum.hasPrefix("修改文件")
     }
 
     private var chatTurnGroups: [ChatTurnGroup] {
@@ -853,20 +862,27 @@ public struct MainRemoteView: View {
                     ChatTurnGroup(
                         id: "turn-\(msg.id)",
                         userMessage: msg,
-                        responseItems: []
+                        responseItems: [],
+                        fileModificationTools: []
                     )
                 )
             } else {
+                let isFileMod = isFileModificationTool(msg)
                 if groups.isEmpty {
                     groups.append(
                         ChatTurnGroup(
                             id: "turn-leading-\(msg.id)",
                             userMessage: nil,
-                            responseItems: [msg]
+                            responseItems: isFileMod ? [] : [msg],
+                            fileModificationTools: isFileMod ? [msg] : []
                         )
                     )
                 } else {
-                    groups[groups.count - 1].responseItems.append(msg)
+                    if isFileMod {
+                        groups[groups.count - 1].fileModificationTools.append(msg)
+                    } else {
+                        groups[groups.count - 1].responseItems.append(msg)
+                    }
                 }
             }
         }
@@ -888,17 +904,19 @@ public struct MainRemoteView: View {
                             let turns = chatTurnGroups
                             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                                 ForEach(Array(turns.enumerated()), id: \.element.id) { idx, turn in
+                                    let isLastTurn = (idx == turns.count - 1)
                                     Section {
                                         VStack(alignment: .leading, spacing: 14) {
                                             ForEach(turn.responseItems) { item in
                                                 turnResponseItemRow(item)
                                                     .id(item.id)
                                             }
-                                            if idx == turns.count - 1 && (!client.artifacts.isEmpty || !client.diffs.isEmpty) {
-                                                inlineArtifactsAndDiffsSection
-                                                    .id("INLINE_DIFFS_ARTIFACTS")
+                                            if (isLastTurn && (!client.artifacts.isEmpty || !client.diffs.isEmpty || !turn.fileModificationTools.isEmpty)) ||
+                                               (!isLastTurn && !turn.fileModificationTools.isEmpty) {
+                                                turnPlanAndCodeCategoryCard(turn: turn, isLatestTurn: isLastTurn)
+                                                    .id("PLAN_CODE_CATEGORY_\(turn.id)")
                                             }
-                                            if idx == turns.count - 1 && shouldShowWorkingIndicator {
+                                            if isLastTurn && shouldShowWorkingIndicator {
                                                 aiWorkingIndicatorRow
                                                     .id("AI_WORKING_INDICATOR")
                                             }
@@ -1733,165 +1751,184 @@ public struct MainRemoteView: View {
         .background(Color(uiColor: .secondarySystemBackground).opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
     }
 
-    // MARK: - 对话流内嵌「方案文档」与「代码变更」极简卡片（点击弹出卡片窗口）
+    // MARK: - 对话流内嵌「方案规划与代码修改」总类别卡片（默认折叠收缩，保持高消息密度，点击条目弹出卡片窗口）
 
-    private var inlineArtifactsAndDiffsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if !client.artifacts.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("\(L("方案文档")) (\(client.artifacts.count))")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if client.artifacts.count > 1 {
-                            Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                showArtifactsSheet = true
-                            } label: {
-                                Text(L("全部"))
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+    @ViewBuilder
+    private func turnPlanAndCodeCategoryCard(turn: ChatTurnGroup, isLatestTurn: Bool) -> some View {
+        let isExpanded = expandedPlanCodeTurnIds.contains(turn.id)
+        let showSessionItems = isLatestTurn && (!client.artifacts.isEmpty || !client.diffs.isEmpty)
+        let artifactCount = showSessionItems ? client.artifacts.count : 0
+        let diffCount = showSessionItems ? client.diffs.count : turn.fileModificationTools.count
+        let summaryLabel: String = {
+            if artifactCount > 0 && diffCount > 0 {
+                return "\(artifactCount) 份方案 · \(diffCount) 个文件"
+            } else if artifactCount > 0 {
+                return "\(artifactCount) 份方案"
+            } else {
+                return "\(diffCount) 处代码修改"
+            }
+        }()
 
-                    ForEach(client.artifacts) { art in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            selectedArtifactForCard = art
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "doc.text")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                    .frame(width: 32, height: 32)
-                                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(art.name)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-
-                                    Text(artifactPreviewSnippet(art))
-                                        .font(.system(size: 12))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-
-                                Spacer(minLength: 8)
-
-                                HStack(spacing: 4) {
-                                    Text(L("查看"))
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                    Image(systemName: "chevron.right")
-                                        .font(.system(size: 11, weight: .medium))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Color(uiColor: .secondarySystemBackground))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                            )
-                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    if isExpanded {
+                        expandedPlanCodeTurnIds.remove(turn.id)
+                    } else {
+                        expandedPlanCodeTurnIds.insert(turn.id)
                     }
                 }
-            }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 22, height: 22)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
 
-            if !client.diffs.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("\(L("代码变更")) (\(client.diffs.count))")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        if client.diffs.count > 1 {
+                    Text(L("方案规划与代码修改"))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Spacer(minLength: 8)
+
+                    Text(summaryLabel)
+                        .font(.system(size: 12, weight: .regular))
+                        .foregroundStyle(.secondary)
+
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if isExpanded {
+                Divider()
+                    .padding(.horizontal, 12)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    if showSessionItems {
+                        ForEach(client.artifacts) { art in
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                showDiffsSheet = true
+                                selectedArtifactForCard = art
                             } label: {
-                                Text(L("全部"))
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
+                                HStack(spacing: 10) {
+                                    Image(systemName: "doc.text")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 18)
 
-                    ForEach(client.diffs) { diff in
-                        let stats = computeDiffLineStats(diff)
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            selectedDiffForCard = diff
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "chevron.left.forwardslash.chevron.right")
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                    .frame(width: 32, height: 32)
-                                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(diff.fileName)
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-
-                                    if !diff.filePath.isEmpty {
-                                        Text(diff.filePath)
-                                            .font(.system(size: 11, design: .monospaced))
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(art.name)
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        Text(artifactPreviewSnippet(art))
+                                            .font(.system(size: 11))
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
                                     }
-                                }
 
-                                Spacer(minLength: 8)
+                                    Spacer(minLength: 6)
 
-                                HStack(spacing: 6) {
-                                    if stats.added > 0 {
-                                        Text("+\(stats.added)")
-                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                            .foregroundStyle(.green)
-                                    }
-                                    if stats.removed > 0 {
-                                        Text("-\(stats.removed)")
-                                            .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                                            .foregroundStyle(.red)
-                                    }
+                                    Text(L("方案"))
+                                        .font(.system(size: 10, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Color.primary.opacity(0.06), in: Capsule())
+
                                     Image(systemName: "chevron.right")
-                                        .font(.system(size: 11, weight: .medium))
+                                        .font(.system(size: 10, weight: .medium))
                                         .foregroundStyle(.tertiary)
                                 }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(Color(uiColor: .tertiarySystemBackground))
+                                )
+                                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .fill(Color(uiColor: .secondarySystemBackground))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                            )
-                            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+
+                        ForEach(client.diffs) { diff in
+                            let stats = computeDiffLineStats(diff)
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                selectedDiffForCard = diff
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: "chevron.left.forwardslash.chevron.right")
+                                        .font(.system(size: 11, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                        .frame(width: 18)
+
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(diff.fileName)
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                        if !diff.filePath.isEmpty {
+                                            Text(diff.filePath)
+                                                .font(.system(size: 10.5, design: .monospaced))
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+
+                                    Spacer(minLength: 6)
+
+                                    HStack(spacing: 5) {
+                                        if stats.added > 0 {
+                                            Text("+\(stats.added)")
+                                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                                .foregroundStyle(.green)
+                                        }
+                                        if stats.removed > 0 {
+                                            Text("-\(stats.removed)")
+                                                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                                                .foregroundStyle(.red)
+                                        }
+                                        Image(systemName: "chevron.right")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 8)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        .fill(Color(uiColor: .tertiarySystemBackground))
+                                )
+                                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    } else {
+                        ForEach(turn.fileModificationTools) { item in
+                            toolExecutionPill(item)
+                        }
                     }
                 }
+                .padding(10)
             }
         }
-        .padding(.top, 4)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(uiColor: .secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
     }
 
     private func artifactPreviewSnippet(_ art: ArtifactItem) -> String {
@@ -2828,12 +2865,12 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                // 权限模式选择器（审核 / 自动 / Turbo），紧挨模型选择右侧
+                // 权限模式选择器（审核 / 自动 / Turbo），紧挨模型选择右侧，与电脑端实时双向同步
                 Menu {
                     ForEach(AgentPermissionMode.allCases) { mode in
                         Button {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            client.permissionMode = mode
+                            client.selectPermissionModeForCurrentConversation(mode)
                         } label: {
                             HStack {
                                 Text("\(mode.displayTitle) — \(mode.subtitle)")
@@ -3360,7 +3397,7 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 15)")
+                LabeledContent("版本号", value: "1.0.0 (Build 16)")
                     .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))
