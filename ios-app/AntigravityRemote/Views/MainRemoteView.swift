@@ -50,6 +50,7 @@ public struct MainRemoteView: View {
     @State private var expandedDiffIds: Set<String> = []
     @State private var expandedArtifactIds: Set<String> = []
     @State private var copiedInstallCmd: Bool = false
+    @State private var singleLineInputHeight: CGFloat = 40
     @FocusState private var isInputFocused: Bool
 
     public init() {
@@ -1887,7 +1888,7 @@ public struct MainRemoteView: View {
                         Image(systemName: "photo.badge.plus")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.blue)
-                            .frame(width: 38, height: 38)
+                            .frame(width: singleLineInputHeight, height: singleLineInputHeight)
                             .background(Color(uiColor: .secondarySystemBackground), in: Circle())
 
                         if !pendingAttachments.isEmpty {
@@ -1918,8 +1919,18 @@ public struct MainRemoteView: View {
                 .lineLimit(1...5)
                 .padding(.horizontal, 13)
                 .padding(.vertical, 8)
-                .frame(minHeight: 38)
-                .background(Color(uiColor: .secondarySystemBackground), in: RoundedRectangle(cornerRadius: 19, style: .continuous))
+                .background(
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: InputFieldHeightPreferenceKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                )
+                .background(
+                    Color(uiColor: .secondarySystemBackground),
+                    in: RoundedRectangle(cornerRadius: singleLineInputHeight / 2, style: .continuous)
+                )
 
                 Button {
                     let text = inputText
@@ -1932,7 +1943,7 @@ public struct MainRemoteView: View {
                     Image(systemName: isQueueModeActive ? "clock.fill" : "arrow.up")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(canSend ? Color.white : Color.secondary.opacity(0.55))
-                        .frame(width: 38, height: 38)
+                        .frame(width: singleLineInputHeight, height: singleLineInputHeight)
                         .background(
                             canSend
                                 ? (isQueueModeActive ? Color.orange : Color.blue)
@@ -1942,6 +1953,15 @@ public struct MainRemoteView: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend)
+            }
+            .onPreferenceChange(InputFieldHeightPreferenceKey.self) { measuredHeight in
+                guard measuredHeight > 20 else { return }
+                if inputText.isEmpty || measuredHeight < singleLineInputHeight {
+                    let rounded = (measuredHeight * 2).rounded() / 2
+                    if abs(singleLineInputHeight - rounded) > 0.1 {
+                        singleLineInputHeight = rounded
+                    }
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -2217,6 +2237,35 @@ public struct MainRemoteView: View {
 
     // MARK: - Tab 4: 底部「设置」主页面 (含思考过程展示、读取文件展示、Tailscale 登录与连接配置)
 
+    private func settingsRowLabel(title: String, subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.body)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+            Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 3)
+        .frame(minHeight: 44, alignment: .leading)
+    }
+
+    private func settingsNavButton(title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                settingsRowLabel(title: title, subtitle: subtitle)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private var settingsPane: some View {
         Form {
             Section {
@@ -2224,7 +2273,9 @@ public struct MainRemoteView: View {
                     LanguagePickerView(l10n: l10n)
                 } label: {
                     Text(l10n.currentLanguage.displayName)
+                        .font(.body)
                         .foregroundStyle(.primary)
+                        .frame(minHeight: 38, alignment: .leading)
                 }
                 .onChange(of: l10n.currentLanguage) { _ in
                     if client.isDemoMode {
@@ -2237,80 +2288,40 @@ public struct MainRemoteView: View {
 
             Section {
                 Toggle(isOn: $client.showThinkingProcess) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("展示 AI 思考过程 (Thinking)")
-                                .font(.body)
-                            Text("在回复气泡上方显示 💭 思考过程折叠卡片")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "brain.head.profile")
-                            .foregroundStyle(.purple)
-                    }
+                    settingsRowLabel(
+                        title: L("展示 AI 思考过程 (Thinking)"),
+                        subtitle: L("在回复气泡上方显示思考过程折叠卡片")
+                    )
                 }
 
                 if client.showThinkingProcess {
                     Toggle(isOn: $client.autoExpandThinking) {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("默认自动展开思考过程")
-                                    .font(.body)
-                                Text("无需手动点击，直接展开完整思考内容")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                            }
-                        } icon: {
-                            Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                .foregroundStyle(.purple)
-                        }
+                        settingsRowLabel(
+                            title: L("默认自动展开思考过程"),
+                            subtitle: L("无需手动点击，直接展开完整思考内容")
+                        )
                     }
                 }
 
                 Toggle(isOn: $client.showFileReadTools) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("展示读取文件记录 (read_file)")
-                                .font(.body)
-                            Text("显示 Agent 读取项目源代码文件的步骤胶丸")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "doc.text.fill")
-                            .foregroundStyle(.blue)
-                    }
+                    settingsRowLabel(
+                        title: L("展示读取文件记录 (read_file)"),
+                        subtitle: L("显示 Agent 读取项目源代码文件的步骤胶丸")
+                    )
                 }
 
                 Toggle(isOn: $client.showOtherToolCalls) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("展示命令执行与修改文件记录")
-                                .font(.body)
-                            Text("显示终端命令 (run_command)、修改代码 (edit_file) 等步骤")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "terminal.fill")
-                            .foregroundStyle(.green)
-                    }
+                    settingsRowLabel(
+                        title: L("展示命令执行与修改文件记录"),
+                        subtitle: L("显示终端命令 (run_command)、修改代码 (edit_file) 等步骤")
+                    )
                 }
 
                 Toggle(isOn: $client.showContextUsageBar) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("展示上下文容量进度条")
-                                .font(.body)
-                            Text("在标题栏下方显示当前对话上下文使用百分比与 Token 容量")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "memorychip")
-                            .foregroundStyle(.cyan)
-                    }
+                    settingsRowLabel(
+                        title: L("展示上下文容量进度条"),
+                        subtitle: L("在标题栏下方显示当前对话上下文使用百分比与 Token 容量")
+                    )
                 }
             } header: {
                 Text("对话流展示设置")
@@ -2318,148 +2329,54 @@ public struct MainRemoteView: View {
 
             Section {
                 Toggle(isOn: $client.enableNotifications) {
-                    Label {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("后台完成与审批通知"))
-                                .font(.body)
-                            Text("当离开 App 时，AI 思考结束或需要操作审批时发送系统通知")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                    } icon: {
-                        Image(systemName: "bell.badge.fill")
-                            .foregroundStyle(.orange)
-                    }
+                    settingsRowLabel(
+                        title: L("后台完成与审批通知"),
+                        subtitle: L("当离开 App 时，AI 思考结束或需要操作审批时发送系统通知")
+                    )
                 }
             } header: {
                 Text("系统通知与提醒")
             }
 
             Section {
-                Button {
+                settingsNavButton(
+                    title: L("2 步极简连接 Mac 教程（含一键开机自启命令）"),
+                    subtitle: L("无需安装 Node.js，一行命令自动配置 Mac 开机自启服务")
+                ) {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showMacSetupGuideSheet = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "laptopcomputer.and.iphone")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(Color.indigo, in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("2 步极简连接 Mac 教程（含一键开机自启命令）"))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("无需安装 Node.js，一行命令自动配置 Mac 开机自启服务")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
                 }
 
-                Button {
+                settingsNavButton(
+                    title: tailnet.status?.isRunning == true
+                        ? "内置 Tailscale 已登录 (\(tailnet.status?.selfIP ?? ""))"
+                        : L("一键登录内置 Tailscale 账号"),
+                    subtitle: tailnet.status?.isRunning == true
+                        ? L("已接入虚拟局域网，支持 5G/异地直接穿透控制 Mac")
+                        : L("首次异地控制请点击此处授权登录 Tailscale")
+                ) {
                     triggerDirectTailscaleLogin()
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "person.badge.key.fill")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(tailnet.status?.isRunning == true ? Color.green : Color.indigo, in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(tailnet.status?.isRunning == true ? "内置 Tailscale 已登录 (\(tailnet.status?.selfIP ?? ""))" : "🔑 一键登录内置 Tailscale 账号")
-                                .font(.subheadline.weight(.bold))
-                                .foregroundStyle(.primary)
-                            Text(tailnet.status?.isRunning == true ? "已接入虚拟局域网，支持 5G/异地直接穿透控制 Mac" : "首次异地控制请点击此处授权登录 Tailscale")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
                 }
 
-                Button {
+                settingsNavButton(
+                    title: L("扫码一键配对连接"),
+                    subtitle: L("扫描 Mac 端二维码，自动配置 Tailscale 与局域网双通道")
+                ) {
                     showQRScannerSheet = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "qrcode.viewfinder")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(Color.blue, in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(L("扫码一键配对连接"))
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("扫描 Mac 端二维码，自动配置 Tailscale 与局域网双通道")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
                 }
 
-                Button {
+                settingsNavButton(
+                    title: L("Tailscale 组网节点与设备列表"),
+                    subtitle: L("查看虚拟局域网在线设备、节点状态与内置引擎控制")
+                ) {
                     showTailnetSheet = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "point.3.connected.trianglepath.dotted")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(tailnetIconColor == .secondary ? Color.teal : tailnetIconColor, in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Tailscale 组网节点与设备列表")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("查看虚拟局域网在线设备、节点状态与内置引擎控制")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
                 }
 
-                Button {
+                settingsNavButton(
+                    title: L("通道与连接高级设置"),
+                    subtitle: L("配置访问令牌 Token、快捷切换首选 IP 与查看路由延迟")
+                ) {
                     showSettingsSheet = true
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.title3)
-                            .foregroundStyle(.white)
-                            .frame(width: 34, height: 34)
-                            .background(Color.orange, in: RoundedRectangle(cornerRadius: 8))
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("通道与连接高级设置")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text("配置访问令牌 Token、快捷切换首选 IP 与查看路由延迟")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 2)
                 }
             } header: {
                 Text("扫码配对、Tailscale 组网与连接设置")
@@ -2470,31 +2387,38 @@ public struct MainRemoteView: View {
                     showPrivacyPolicySheet = true
                 } label: {
                     HStack {
-                        Image(systemName: "hand.raised.shield.fill")
-                            .foregroundStyle(.green)
                         Text(L("隐私政策"))
+                            .font(.body)
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
+                    .frame(minHeight: 38)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
 
                 Button {
                     showOpenSourceLicensesSheet = true
                 } label: {
                     HStack {
                         Text(L("开源组件许可"))
+                            .font(.body)
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: "chevron.right")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
                     }
+                    .frame(minHeight: 38)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
 
-                LabeledContent("版本号", value: "1.0.0 (Build 3)")
+                LabeledContent("版本号", value: "1.0.0 (Build 11)")
+                    .frame(minHeight: 38)
             } header: {
                 Text(L("隐私声明"))
             } footer: {
@@ -2592,6 +2516,17 @@ private struct LanguagePickerView: View {
                 Text(L("界面语言 / Language"))
                     .font(.headline)
             }
+        }
+    }
+}
+
+// MARK: - 单行输入框高度 PreferenceKey，确保左右圆形按钮直径与输入框单行高度精准一致
+private struct InputFieldHeightPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        let next = nextValue()
+        if next > 0 {
+            value = next
         }
     }
 }

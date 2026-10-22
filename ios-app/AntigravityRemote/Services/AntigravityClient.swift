@@ -248,6 +248,7 @@ public final class AntigravityClient: ObservableObject {
         let contextUsageByCascadeId: [String: ContextUsageInfo]
         let activeModelByCascadeId: [String: String]
         let lastCascadeId: String
+        let models: [AIModelItem]?
     }
 
     private static var offlineSnapshotURL: URL {
@@ -267,6 +268,9 @@ public final class AntigravityClient: ObservableObject {
         }
         if self.projects.isEmpty { self.projects = snap.projects }
         if self.conversations.isEmpty { self.conversations = snap.conversations }
+        if self.models.isEmpty, let cachedModels = snap.models, !cachedModels.isEmpty {
+            self.models = cachedModels
+        }
         for (k, v) in snap.messagesByCascadeId {
             if self.conversationMessagesCache[k] == nil {
                 self.conversationMessagesCache[k] = v
@@ -329,7 +333,8 @@ public final class AntigravityClient: ObservableObject {
             messagesByCascadeId: recentMessages,
             contextUsageByCascadeId: recentContext,
             activeModelByCascadeId: self.conversationActiveModelCache,
-            lastCascadeId: self.currentCascadeId
+            lastCascadeId: self.currentCascadeId,
+            models: self.models
         )
 
         let targetURL = Self.offlineSnapshotURL
@@ -1132,10 +1137,19 @@ public final class AntigravityClient: ObservableObject {
 
     public func fetchModels() async {
         if isDemoMode { return }
-        guard let res: ModelsResponse = try? await request(path: "/api/v1/models"),
-              let list = res.models else { return }
-        if models != list {
-            models = list
+        if models.count <= 2 {
+            etagByPath.removeValue(forKey: "/api/v1/models")
+        }
+        do {
+            let res: ModelsResponse = try await request(path: "/api/v1/models")
+            if let list = res.models, !list.isEmpty, models != list {
+                models = list
+                scheduleSaveOfflineSnapshot()
+            }
+        } catch HTTPNotModifiedSignal.notModified {
+            // 304 未修改，直接保留现有完整模型列表
+        } catch {
+            // 忽略网络瞬时异常
         }
     }
 

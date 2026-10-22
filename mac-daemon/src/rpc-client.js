@@ -1262,7 +1262,9 @@ class AntigravityRpcClient {
       }
     }
 
-    return configs.map((c) => {
+    return configs
+      .filter((c) => Boolean(c && c.label && String(c.label).trim()))
+      .map((c) => {
       const label = c.label || '';
       const isGemini = label.toLowerCase().includes('gemini');
       const b5h = bucketMap.get(isGemini ? 'gemini-5h' : '3p-5h');

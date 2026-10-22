@@ -338,7 +338,7 @@ struct ConnectionSettingsSheet: View {
         NavigationStack {
             Form {
                 Section(L("Mac 桥接服务器参数")) {
-                    LabeledContent("当前连接状态", value: client.isConnected ? "✅ 在线 (\(client.connectionRouteDescription))" : "⚠️ 未连接")
+                    LabeledContent("当前连接状态", value: client.isConnected ? "在线 (\(client.connectionRouteDescription))" : "未连接")
                     LabeledContent("Tailscale 主地址") {
                         TextField("100.x.y.z", text: $client.serverHost)
                             .textInputAutocapitalization(.never)
@@ -488,7 +488,7 @@ struct ModelPickerSheet: View {
         )] = [:]
 
         for item in client.models {
-            if item.label.localizedCaseInsensitiveContains("placeholder") || item.modelId.localizedCaseInsensitiveContains("placeholder") {
+            if item.label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 continue
             }
             let (base, intensity) = Self.parseLabel(item.label)
