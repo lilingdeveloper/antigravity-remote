@@ -521,6 +521,29 @@ const requestHandler = async (req, res) => {
       return sendJson(res, 200, { ok: true, ...detail }, req);
     }
 
+    // GET /api/v1/conversations/:id/media (读取用户上传的图片或视频原始数据)
+    const convoMediaMatch = pathname.match(/^\/api\/v1\/conversations\/([a-f0-9-]+)\/media$/i);
+    if (convoMediaMatch && req.method === 'GET') {
+      const cascadeId = convoMediaMatch[1];
+      const mediaData = await rpcClient.getConversationMedia(cascadeId, {
+        stepIndex: urlObj.searchParams.get('step'),
+        mediaIndex: urlObj.searchParams.get('index'),
+        file: urlObj.searchParams.get('file') || '',
+        name: urlObj.searchParams.get('name') || ''
+      });
+      if (!mediaData || !mediaData.buffer) {
+        return sendJson(res, 404, { ok: false, error: '未找到对应的媒体文件' });
+      }
+      res.writeHead(200, {
+        'Content-Type': mediaData.mimeType || 'image/jpeg',
+        'Content-Length': mediaData.buffer.length,
+        'Cache-Control': 'public, max-age=31536000, immutable',
+        'Access-Control-Allow-Origin': '*'
+      });
+      res.end(mediaData.buffer);
+      return;
+    }
+
     // GET /api/v1/conversations/:id/diffs
     const convoDiffsMatch = pathname.match(/^\/api\/v1\/conversations\/([a-f0-9-]+)\/diffs$/i);
     if (convoDiffsMatch && req.method === 'GET') {

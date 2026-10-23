@@ -183,7 +183,16 @@
     el.paneChat.innerHTML = msgs
       .map((m) => {
         if (m.role === 'user') {
-          return `<div class="msg-user">${escapeHtml(m.text)}</div>`;
+          const tokenParam = state.accessToken ? `&token=${encodeURIComponent(state.accessToken)}` : '';
+          const mediaHtml = Array.isArray(m.media) && m.media.length > 0
+            ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:${m.text ? '6px' : '0'};">${m.media
+                .map((item) => {
+                  const rawUrl = item.url ? `${item.url}${item.url.includes('?') ? tokenParam : `?${tokenParam.slice(1)}`}` : '';
+                  return `<img src="${escapeHtml(rawUrl)}" alt="${escapeHtml(item.fileName || '')}" style="width:56px;height:56px;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.16);" onclick="window.open(this.src,'_blank')" />`;
+                })
+                .join('')}</div>`
+            : '';
+          return `<div class="msg-user">${mediaHtml}${escapeHtml(m.text)}</div>`;
         }
         if (m.role === 'tool') {
           return `<div class="tool-pill">🛠️ ${escapeHtml(m.summary)}</div>`;

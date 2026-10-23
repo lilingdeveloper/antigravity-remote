@@ -869,27 +869,20 @@ class AntigravityRpcClient {
           text = `✅ 已批准方案文档：${fileName}`;
         }
 
-        // 检查用户是否附带了图片或视频媒体文件
-        const rawMedia = Array.isArray(ui.media) && ui.media.length > 0
-          ? ui.media
-          : (tStep && Array.isArray(tStep.media) ? tStep.media : []);
-        if (rawMedia.length > 0) {
-          const mediaLabels = rawMedia.map((m) => {
-            const mime = (m.mimeType || m.mime_type || '').toLowerCase();
-            const desc = m.description || path.basename(m.uri || '') || '媒体文件';
-            return mime.startsWith('video/') ? `🎬 [视频: ${desc}]` : `🖼️ [图片: ${desc}]`;
-          });
-          const badgeLine = mediaLabels.join('  ');
-          text = text ? `${badgeLine}\n${text}` : badgeLine;
+        // 提取用户附带的图片或视频媒体文件列表（以缩略图形式展示，不再拼接 [图片: ...] 文本占位）
+        const mediaItems = this._extractStepMediaItems(cascadeId, i, ui.media, tStep && tStep.media);
+        if (mediaItems.length > 0 && (text === '请查看我上传的图片/视频' || text === '请查看我上传的媒体文件')) {
+          text = '';
         }
 
-        if (text || slashCommand) {
+        if (text || slashCommand || mediaItems.length > 0) {
           messages.push({
             id: `step-${i}`,
             stepIndex: i,
             role: 'user',
             slashCommand,
-            text: slashCommand && text ? `${slashCommand} ${text}` : text || slashCommand,
+            text: slashCommand && text ? `${slashCommand} ${text}` : (text || slashCommand || ''),
+            media: mediaItems.length > 0 ? mediaItems : undefined,
             createdAt,
             status
           });
@@ -1004,23 +997,18 @@ class AntigravityRpcClient {
         if (tType === 'USER_INPUT') {
           let text = this._cleanUserTags(tStep.content || '');
           if (text.startsWith('<SYSTEM_MESSAGE>')) continue;
-          const rawMedia = Array.isArray(tStep.media) ? tStep.media : [];
-          if (rawMedia.length > 0) {
-            const mediaLabels = rawMedia.map((m) => {
-              const mime = (m.mimeType || m.mime_type || '').toLowerCase();
-              const desc = m.description || path.basename(m.uri || '') || '媒体文件';
-              return mime.startsWith('video/') ? `🎬 [视频: ${desc}]` : `🖼️ [图片: ${desc}]`;
-            });
-            const badgeLine = mediaLabels.join('  ');
-            text = text ? `${badgeLine}\n${text}` : badgeLine;
+          const mediaItems = this._extractStepMediaItems(cascadeId, idx, [], tStep.media);
+          if (mediaItems.length > 0 && (text === '请查看我上传的图片/视频' || text === '请查看我上传的媒体文件')) {
+            text = '';
           }
-          if (text) {
+          if (text || mediaItems.length > 0) {
             messages.push({
               id: `step-${idx}`,
               stepIndex: idx,
               role: 'user',
               slashCommand: null,
               text,
+              media: mediaItems.length > 0 ? mediaItems : undefined,
               createdAt,
               status: 'CORTEX_STEP_STATUS_DONE'
             });
@@ -1074,7 +1062,13 @@ class AntigravityRpcClient {
         this._recentDispatchedUserMessages.delete(cascadeId);
       } else {
         const tailUserMsgs = messages.slice(-4).filter((m) => m.role === 'user');
-        const alreadyInSteps = tailUserMsgs.some((m) => (m.text || '').trim().includes(recentDispatched.text));
+        const alreadyInSteps = tailUserMsgs.some((m) => {
+          if (recentDispatched.text && (m.text || '').trim().includes(recentDispatched.text)) return true;
+          if (!recentDispatched.text && Array.isArray(recentDispatched.media) && recentDispatched.media.length > 0 && Array.isArray(m.media) && m.media.length > 0) {
+            return true;
+          }
+          return false;
+        });
         if (alreadyInSteps) {
           this._recentDispatchedUserMessages.delete(cascadeId);
         } else {
@@ -1082,7 +1076,8 @@ class AntigravityRpcClient {
             id: `pending-dispatch-${recentDispatched.dispatchedAt}`,
             stepIndex: rawSteps.length,
             role: 'user',
-            text: recentDispatched.text,
+            text: recentDispatched.text || '',
+            media: Array.isArray(recentDispatched.media) && recentDispatched.media.length > 0 ? recentDispatched.media : undefined,
             createdAt: new Date(recentDispatched.dispatchedAt).toISOString(),
             status: 'CORTEX_STEP_STATUS_DONE'
           });
@@ -1678,11 +1673,143 @@ class AntigravityRpcClient {
   }
 
   /**
+   * 提取某个用户步骤中的图片/视频附件元数据（供移动端展示缩略图与点击大图预览）
+   */
+  _extractStepMediaItems(cascadeId, stepIndex, uiMedia, tMedia) {
+    const uList = Array.isArray(uiMedia) ? uiMedia : [];
+    const tList = Array.isArray(tMedia) ? tMedia : [];
+    const count = Math.max(uList.length, tList.length);
+    if (count === 0) return [];
+
+    const items = [];
+    for (let k = 0; k < count; k++) {
+      const uItem = uList[k] || {};
+      const tItem = tList[k] || {};
+      const mimeType = String(uItem.mimeType || tItem.mimeType || tItem.mime_type || 'image/jpeg').toLowerCase();
+      const isVideo = mimeType.startsWith('video/');
+      const rawUri = String(uItem.uri || tItem.uri || '').replace(/^file:\/\//, '');
+      const diskFileName = rawUri ? path.basename(decodeURIComponent(rawUri)) : '';
+      const fileName =
+        uItem.description ||
+        tItem.description ||
+        diskFileName ||
+        (isVideo ? `video_${k + 1}.mp4` : `photo_${k + 1}.jpg`);
+
+      const qs = [
+        `step=${encodeURIComponent(String(stepIndex))}`,
+        `index=${encodeURIComponent(String(k))}`
+      ];
+      if (diskFileName) qs.push(`file=${encodeURIComponent(diskFileName)}`);
+      if (fileName) qs.push(`name=${encodeURIComponent(fileName)}`);
+
+      items.push({
+        id: `${cascadeId}-step-${stepIndex}-media-${k}`,
+        mimeType,
+        fileName,
+        isVideo,
+        url: `/api/v1/conversations/${encodeURIComponent(cascadeId)}/media?${qs.join('&')}`
+      });
+    }
+    return items;
+  }
+
+  _inferMimeTypeFromFileName(fileName = '', fallback = 'image/jpeg') {
+    const ext = path.extname(String(fileName || '')).toLowerCase();
+    if (ext === '.png') return 'image/png';
+    if (ext === '.gif') return 'image/gif';
+    if (ext === '.webp') return 'image/webp';
+    if (ext === '.heic') return 'image/heic';
+    if (ext === '.mp4') return 'video/mp4';
+    if (ext === '.mov') return 'video/quicktime';
+    if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+    return fallback || 'image/jpeg';
+  }
+
+  /**
+   * 读取会话中用户上传的图片或视频原始二进制数据（供 GET /api/v1/conversations/:id/media 响应）
+   */
+  async getConversationMedia(cascadeId, { stepIndex, mediaIndex = 0, file = '', name = '' } = {}) {
+    if (!cascadeId || !/^[a-f0-9-]+$/i.test(cascadeId)) return null;
+    const uploadDir = path.join(BRAIN_DIR, cascadeId, '.user_uploaded');
+    const brainCascadeDir = path.join(BRAIN_DIR, cascadeId);
+
+    const tryReadDiskPath = (fullPath, fallbackMime = 'image/jpeg') => {
+      if (!fullPath) return null;
+      const resolved = path.resolve(fullPath);
+      const allowedRoot = path.resolve(BRAIN_DIR);
+      if (!resolved.startsWith(allowedRoot)) return null;
+      try {
+        if (fs.existsSync(resolved) && fs.statSync(resolved).isFile()) {
+          return {
+            buffer: fs.readFileSync(resolved),
+            mimeType: this._inferMimeTypeFromFileName(resolved, fallbackMime)
+          };
+        }
+      } catch (_) {}
+      return null;
+    };
+
+    // 1. 优先直接按文件名从 ~/.gemini/antigravity/brain/<cascadeId>/.user_uploaded 读取
+    for (const candidateName of [file, name]) {
+      const safeBase = path.basename(String(candidateName || '').trim());
+      if (!safeBase) continue;
+      const hitUpload = tryReadDiskPath(path.join(uploadDir, safeBase));
+      if (hitUpload) return hitUpload;
+      const hitBrain = tryReadDiskPath(path.join(brainCascadeDir, safeBase));
+      if (hitBrain) return hitBrain;
+    }
+
+    const sIdx = Number(stepIndex);
+    const mIdx = Math.max(0, Number(mediaIndex) || 0);
+
+    // 2. 从本地 transcript.jsonl 中按 stepIndex 查找 media[mIdx].uri
+    if (Number.isFinite(sIdx) && sIdx >= 0) {
+      const transcriptMap = this._readLocalTranscriptMap(cascadeId);
+      const tStep = transcriptMap.get(sIdx);
+      if (tStep && Array.isArray(tStep.media) && tStep.media[mIdx]) {
+        const tm = tStep.media[mIdx];
+        const rawUri = String(tm.uri || '').replace(/^file:\/\//, '');
+        if (rawUri) {
+          const hit = tryReadDiskPath(decodeURIComponent(rawUri), tm.mime_type || tm.mimeType);
+          if (hit) return hit;
+        }
+      }
+    }
+
+    // 3. 从 language_server GetCascadeTrajectory 中按 stepIndex 查找 uri / inlineData / thumbnail
+    if (Number.isFinite(sIdx) && sIdx >= 0) {
+      try {
+        const res = await this.callRpc('GetCascadeTrajectory', { cascadeId });
+        const steps = (res && res.trajectory && res.trajectory.steps) || [];
+        const step = steps[sIdx];
+        const mediaArr = (step && step.userInput && Array.isArray(step.userInput.media)) ? step.userInput.media : [];
+        const m = mediaArr[mIdx];
+        if (m) {
+          const rawUri = String(m.uri || '').replace(/^file:\/\//, '');
+          if (rawUri) {
+            const hit = tryReadDiskPath(decodeURIComponent(rawUri), m.mimeType);
+            if (hit) return hit;
+          }
+          const rawB64 = String(m.inlineData || m.thumbnail || '').replace(/^data:[^;]+;base64,/, '');
+          if (rawB64) {
+            return {
+              buffer: Buffer.from(rawB64, 'base64'),
+              mimeType: m.mimeType || 'image/jpeg'
+            };
+          }
+        }
+      } catch (_) {}
+    }
+
+    return null;
+  }
+
+  /**
    * 将手机端上传的媒体文件保存到会话的 .user_uploaded 目录，并返回整理后的 Media 数组与本地路径
    */
   _prepareUploadedMedia(cascadeId, mediaList) {
     if (!Array.isArray(mediaList) || mediaList.length === 0) {
-      return { protoMedia: [], savedPaths: [] };
+      return { protoMedia: [], savedPaths: [], dispatchedMediaItems: [] };
     }
     const uploadDir = path.join(BRAIN_DIR, cascadeId, '.user_uploaded');
     try {
@@ -1691,8 +1818,10 @@ class AntigravityRpcClient {
 
     const protoMedia = [];
     const savedPaths = [];
+    const dispatchedMediaItems = [];
 
-    for (const item of mediaList) {
+    for (let idx = 0; idx < mediaList.length; idx++) {
+      const item = mediaList[idx];
       const rawBase64 = (item.inlineData || item.data || '').replace(/^data:[^;]+;base64,/, '');
       if (!rawBase64) continue;
       const mimeType = item.mimeType || 'image/jpeg';
@@ -1708,19 +1837,37 @@ class AntigravityRpcClient {
       }
       const safeFileName = `media_${Date.now()}_${Math.random().toString(16).slice(2, 10)}${ext}`;
       const fullPath = path.join(uploadDir, safeFileName);
+      const buf = Buffer.from(rawBase64, 'base64');
       try {
-        fs.writeFileSync(fullPath, Buffer.from(rawBase64, 'base64'));
+        fs.writeFileSync(fullPath, buf);
         savedPaths.push(fullPath);
+        if (origName) {
+          const safeOrig = path.basename(origName).replace(/[^a-zA-Z0-9._-]/g, '_');
+          if (safeOrig && safeOrig !== safeFileName) {
+            const aliasPath = path.join(uploadDir, safeOrig);
+            if (!fs.existsSync(aliasPath)) {
+              fs.writeFileSync(aliasPath, buf);
+            }
+          }
+        }
       } catch (_) {}
 
+      const displayFileName = origName || safeFileName;
       protoMedia.push({
         mimeType,
-        description: origName || safeFileName,
+        description: displayFileName,
         inlineData: rawBase64
+      });
+      dispatchedMediaItems.push({
+        id: `${cascadeId}-pending-media-${Date.now()}-${idx}`,
+        mimeType: mimeType.toLowerCase(),
+        fileName: displayFileName,
+        isVideo: mimeType.toLowerCase().startsWith('video/'),
+        url: `/api/v1/conversations/${encodeURIComponent(cascadeId)}/media?file=${encodeURIComponent(safeFileName)}&name=${encodeURIComponent(displayFileName)}`
       });
     }
 
-    return { protoMedia, savedPaths };
+    return { protoMedia, savedPaths, dispatchedMediaItems };
   }
 
   /**
@@ -1730,9 +1877,11 @@ class AntigravityRpcClient {
     this._dispatchingSet.add(cascadeId);
     this._lastDispatchTime.set(cascadeId, Date.now());
     const rawCleanText = (text || '').trim();
-    if (rawCleanText || (Array.isArray(media) && media.length > 0)) {
+    const { protoMedia, savedPaths, dispatchedMediaItems } = this._prepareUploadedMedia(cascadeId, media);
+    if (rawCleanText || dispatchedMediaItems.length > 0) {
       this._recentDispatchedUserMessages.set(cascadeId, {
-        text: rawCleanText || '请查看我上传的图片/视频',
+        text: rawCleanText,
+        media: dispatchedMediaItems,
         dispatchedAt: Date.now()
       });
     }
@@ -1742,7 +1891,6 @@ class AntigravityRpcClient {
         model,
         permissionMode
       );
-      const { protoMedia, savedPaths } = this._prepareUploadedMedia(cascadeId, media);
 
       const payload = {
         cascadeId,

@@ -42,6 +42,7 @@ public struct MainRemoteView: View {
     @State private var showArtifactsSheet = false
     @State private var selectedDiffForCard: FileDiffItem?
     @State private var selectedArtifactForCard: ArtifactItem?
+    @State private var mediaPreviewContext: MediaPreviewContext?
     @State private var showNewChatAlert = false
     @State private var newChatPrompt = ""
     @State private var pairToastMessage: String?
@@ -273,6 +274,15 @@ public struct MainRemoteView: View {
                                 showDirectSafariLogin = false
                             }
                             .ignoresSafeArea()
+                        }
+                    }
+                    .fullScreenCover(item: $mediaPreviewContext) { ctx in
+                        FullscreenMediaPreviewSheet(
+                            client: client,
+                            items: ctx.items,
+                            initialIndex: ctx.initialIndex
+                        ) {
+                            mediaPreviewContext = nil
                         }
                     }
                     .onChange(of: tailnet.status?.isRunning) { running in
@@ -1465,30 +1475,83 @@ public struct MainRemoteView: View {
 
     // MARK: - 吸顶用户消息栏 (Sticky User Turn Header) 与全宽文档流式回复渲染
 
+    private func cleanedUserDisplayText(for msg: ChatMessageItem) -> String {
+        var text = (msg.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.isEmpty { return "" }
+        // 移除旧版本遗留的 [图片: ...] / [视频: ...] 文本占位符
+        if let regex = try? NSRegularExpression(pattern: #"(?:🖼️\s*\[图片:[^\]]*\]|🎬\s*\[视频:[^\]]*\]|\[图片:[^\]]*\]|\[视频:[^\]]*\])\s*"#, options: []) {
+            let range = NSRange(text.startIndex..<text.endIndex, in: text)
+            text = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if !(msg.media ?? []).isEmpty,
+           (text == "请查看我上传的图片/视频" || text == "请查看我上传的媒体文件") {
+            return ""
+        }
+        return text
+    }
+
     @ViewBuilder
     private func stickyUserTurnHeader(_ msg: ChatMessageItem) -> some View {
-        let rawText = (msg.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let rawText = cleanedUserDisplayText(for: msg)
+        let mediaItems = msg.media ?? []
         let isExpanded = expandedUserTurnIds.contains(msg.id)
         let isLong = rawText.count > 72 || rawText.contains("\n")
 
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 8) {
-                Text(rawText)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(isExpanded ? 14 : 2)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: (!mediaItems.isEmpty && !rawText.isEmpty) ? 8 : 0) {
+                if !mediaItems.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(Array(mediaItems.enumerated()), id: \.element.id) { index, mediaItem in
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    mediaPreviewContext = MediaPreviewContext(
+                                        items: mediaItems,
+                                        initialIndex: index
+                                    )
+                                } label: {
+                                    ChatMediaThumbnailView(client: client, item: mediaItem)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
 
-                if isLong {
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 4)
+                if !rawText.isEmpty {
+                    HStack(alignment: .top, spacing: 8) {
+                        Text(rawText)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(isExpanded ? 14 : 2)
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if isLong {
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.tertiary)
+                                .padding(.top, 4)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        guard isLong else { return }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.easeInOut(duration: 0.18)) {
+                            if isExpanded {
+                                expandedUserTurnIds.remove(msg.id)
+                            } else {
+                                expandedUserTurnIds.insert(msg.id)
+                            }
+                        }
+                    }
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 11)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color(uiColor: .secondarySystemBackground))
@@ -1498,18 +1561,6 @@ public struct MainRemoteView: View {
                     .stroke(Color.primary.opacity(0.09), lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.10), radius: 5, y: 2)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .onTapGesture {
-                guard isLong else { return }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    if isExpanded {
-                        expandedUserTurnIds.remove(msg.id)
-                    } else {
-                        expandedUserTurnIds.insert(msg.id)
-                    }
-                }
-            }
             .contextMenu {
                 if !rawText.isEmpty {
                     Button {
@@ -3783,6 +3834,355 @@ private struct InputFieldHeightPreferenceKey: PreferenceKey {
         let next = nextValue()
         if next > 0 {
             value = next
+        }
+    }
+}
+
+// MARK: - 对话消息照片小图缩略图与点击全屏缩放预览器
+
+private struct MediaPreviewContext: Identifiable {
+    let id = UUID()
+    let items: [ChatMediaItem]
+    let initialIndex: Int
+}
+
+private struct ChatMediaThumbnailView: View {
+    @ObservedObject var client: AntigravityClient
+    let item: ChatMediaItem
+
+    @State private var loadedImage: UIImage?
+    @State private var isLoading: Bool = false
+
+    var body: some View {
+        ZStack {
+            if let img = loadedImage ?? ChatMediaImageCache.shared.cachedImage(for: item) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipped()
+            } else {
+                Color(uiColor: .tertiarySystemBackground)
+                if isLoading {
+                    ProgressView()
+                        .controlSize(.mini)
+                } else {
+                    Image(systemName: (item.isVideo == true) ? "video.fill" : "photo")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .frame(width: 56, height: 56)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.primary.opacity(0.12), lineWidth: 0.8)
+        )
+        .overlay(alignment: .bottomTrailing) {
+            if item.isVideo == true {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(4)
+                    .background(Color.black.opacity(0.65), in: Circle())
+                    .padding(3)
+            }
+        }
+        .task(id: item.id) {
+            if let existing = ChatMediaImageCache.shared.cachedImage(for: item) {
+                loadedImage = existing
+                return
+            }
+            isLoading = true
+            let img = await client.loadMediaImage(for: item)
+            if let img {
+                loadedImage = img
+            }
+            isLoading = false
+        }
+    }
+}
+
+private struct FullscreenMediaPreviewSheet: View {
+    @ObservedObject var client: AntigravityClient
+    let items: [ChatMediaItem]
+    let initialIndex: Int
+    let onClose: () -> Void
+
+    @State private var currentIndex: Int
+    @State private var copiedToast: Bool = false
+    @State private var dragOffsetY: CGFloat = 0
+
+    init(
+        client: AntigravityClient,
+        items: [ChatMediaItem],
+        initialIndex: Int,
+        onClose: @escaping () -> Void
+    ) {
+        self.client = client
+        self.items = items
+        self.initialIndex = initialIndex
+        self.onClose = onClose
+        self._currentIndex = State(initialValue: min(max(0, initialIndex), max(0, items.count - 1)))
+    }
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .opacity(max(0.4, 1.0 - Double(abs(dragOffsetY)) / 360.0))
+                .ignoresSafeArea()
+
+            if !items.isEmpty {
+                TabView(selection: $currentIndex) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { idx, mediaItem in
+                        FullscreenSingleMediaPage(
+                            client: client,
+                            item: mediaItem,
+                            onSingleTap: onClose
+                        )
+                        .tag(idx)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: items.count > 1 ? .automatic : .never))
+                .ignoresSafeArea()
+                .offset(y: dragOffsetY)
+                .gesture(
+                    DragGesture(minimumDistance: 18)
+                        .onChanged { value in
+                            if abs(value.translation.height) > abs(value.translation.width) && value.translation.height > 0 {
+                                dragOffsetY = value.translation.height
+                            }
+                        }
+                        .onEnded { value in
+                            if value.translation.height > 110 || value.predictedEndTranslation.height > 200 {
+                                onClose()
+                            } else {
+                                withAnimation(.spring(response: 0.25, dampingFraction: 0.82)) {
+                                    dragOffsetY = 0
+                                }
+                            }
+                        }
+                )
+            }
+
+            // 顶部操控栏：页码指示 + 复制图片 + 关闭按钮
+            VStack {
+                HStack(spacing: 12) {
+                    if items.count > 1 {
+                        Text("\(currentIndex + 1) / \(items.count)")
+                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(.ultraThinMaterial, in: Capsule())
+                    }
+
+                    Spacer()
+
+                    if currentIndex < items.count {
+                        let activeItem = items[currentIndex]
+                        Button {
+                            if let img = ChatMediaImageCache.shared.cachedImage(for: activeItem) {
+                                UIPasteboard.general.image = img
+                                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                                copiedToast = true
+                                Task {
+                                    try? await Task.sleep(nanoseconds: 1_500_000_000)
+                                    copiedToast = false
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: copiedToast ? "checkmark" : "doc.on.doc")
+                                    .font(.system(size: 13, weight: .semibold))
+                                if copiedToast {
+                                    Text(L("已复制"))
+                                        .font(.system(size: 12, weight: .semibold))
+                                }
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        onClose()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 34, height: 34)
+                            .background(.ultraThinMaterial, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+
+                Spacer()
+            }
+        }
+        .statusBarHidden(false)
+    }
+}
+
+private struct FullscreenSingleMediaPage: View {
+    @ObservedObject var client: AntigravityClient
+    let item: ChatMediaItem
+    let onSingleTap: () -> Void
+
+    @State private var loadedImage: UIImage?
+    @State private var isLoading: Bool = false
+
+    var body: some View {
+        ZStack {
+            if let img = loadedImage ?? ChatMediaImageCache.shared.cachedImage(for: item) {
+                ZoomableUIImageScrollView(image: img, onSingleTap: onSingleTap)
+                    .ignoresSafeArea()
+            } else {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        onSingleTap()
+                    }
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(1.2)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 36))
+                            .foregroundStyle(.white.opacity(0.65))
+                        if let name = item.fileName {
+                            Text(name)
+                                .font(.caption)
+                                .foregroundStyle(.white.opacity(0.65))
+                        }
+                    }
+                }
+            }
+        }
+        .task(id: item.id) {
+            if let existing = ChatMediaImageCache.shared.cachedImage(for: item) {
+                loadedImage = existing
+                return
+            }
+            isLoading = true
+            if let img = await client.loadMediaImage(for: item) {
+                loadedImage = img
+            }
+            isLoading = false
+        }
+    }
+}
+
+private final class AutoSizingZoomScrollView: UIScrollView {
+    let zoomImageView = UIImageView()
+    private var lastBoundsSize: CGSize = .zero
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        zoomImageView.contentMode = .scaleAspectFit
+        zoomImageView.clipsToBounds = true
+        zoomImageView.isUserInteractionEnabled = true
+        addSubview(zoomImageView)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        if bounds.size != lastBoundsSize && bounds.width > 0 && bounds.height > 0 {
+            lastBoundsSize = bounds.size
+            zoomScale = 1.0
+            zoomImageView.frame = bounds
+            contentSize = bounds.size
+        }
+    }
+}
+
+private struct ZoomableUIImageScrollView: UIViewRepresentable {
+    let image: UIImage
+    let onSingleTap: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onSingleTap: onSingleTap)
+    }
+
+    func makeUIView(context: Context) -> AutoSizingZoomScrollView {
+        let scrollView = AutoSizingZoomScrollView(frame: .zero)
+        scrollView.delegate = context.coordinator
+        scrollView.minimumZoomScale = 1.0
+        scrollView.maximumZoomScale = 4.0
+        scrollView.bouncesZoom = true
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.backgroundColor = .clear
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.zoomImageView.image = image
+        context.coordinator.imageView = scrollView.zoomImageView
+
+        let doubleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        scrollView.addGestureRecognizer(doubleTap)
+
+        let singleTap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleSingleTap(_:)))
+        singleTap.numberOfTapsRequired = 1
+        singleTap.require(toFail: doubleTap)
+        scrollView.addGestureRecognizer(singleTap)
+
+        return scrollView
+    }
+
+    func updateUIView(_ scrollView: AutoSizingZoomScrollView, context: Context) {
+        context.coordinator.onSingleTap = onSingleTap
+        if scrollView.zoomImageView.image !== image {
+            scrollView.zoomImageView.image = image
+            scrollView.zoomScale = 1.0
+            if scrollView.bounds.width > 0 && scrollView.bounds.height > 0 {
+                scrollView.zoomImageView.frame = scrollView.bounds
+                scrollView.contentSize = scrollView.bounds.size
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, UIScrollViewDelegate {
+        var onSingleTap: () -> Void
+        weak var imageView: UIImageView?
+
+        init(onSingleTap: @escaping () -> Void) {
+            self.onSingleTap = onSingleTap
+        }
+
+        func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+            imageView
+        }
+
+        @objc func handleSingleTap(_ recognizer: UITapGestureRecognizer) {
+            onSingleTap()
+        }
+
+        @objc func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
+            guard let scrollView = recognizer.view as? UIScrollView,
+                  let imageView = imageView else { return }
+            if scrollView.zoomScale > 1.01 {
+                scrollView.setZoomScale(1.0, animated: true)
+            } else {
+                let point = recognizer.location(in: imageView)
+                let zoomScale: CGFloat = 2.6
+                let w = scrollView.bounds.width / zoomScale
+                let h = scrollView.bounds.height / zoomScale
+                let rect = CGRect(x: point.x - w / 2, y: point.y - h / 2, width: w, height: h)
+                scrollView.zoom(to: rect, animated: true)
+            }
         }
     }
 }

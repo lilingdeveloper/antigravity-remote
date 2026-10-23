@@ -118,6 +118,28 @@ public struct PendingInteractionItem: Codable, Equatable {
     public let questions: [AskQuestionEntryItem]?
 }
 
+public struct ChatMediaItem: Codable, Identifiable, Equatable {
+    public let id: String
+    public let mimeType: String?
+    public let fileName: String?
+    public let isVideo: Bool?
+    public let url: String?
+
+    public init(
+        id: String,
+        mimeType: String? = "image/jpeg",
+        fileName: String? = nil,
+        isVideo: Bool? = false,
+        url: String? = nil
+    ) {
+        self.id = id
+        self.mimeType = mimeType
+        self.fileName = fileName
+        self.isVideo = isVideo
+        self.url = url
+    }
+}
+
 public struct ChatMessageItem: Codable, Identifiable, Equatable {
     public let id: String
     public let stepIndex: Int?
@@ -129,6 +151,33 @@ public struct ChatMessageItem: Codable, Identifiable, Equatable {
     public let model: String?
     public let status: String?
     public let isGenerating: Bool?
+    public let media: [ChatMediaItem]?
+
+    public init(
+        id: String,
+        stepIndex: Int? = nil,
+        role: String,
+        thinking: String? = nil,
+        text: String? = nil,
+        toolName: String? = nil,
+        summary: String? = nil,
+        model: String? = nil,
+        status: String? = nil,
+        isGenerating: Bool? = nil,
+        media: [ChatMediaItem]? = nil
+    ) {
+        self.id = id
+        self.stepIndex = stepIndex
+        self.role = role
+        self.thinking = thinking
+        self.text = text
+        self.toolName = toolName
+        self.summary = summary
+        self.model = model
+        self.status = status
+        self.isGenerating = isGenerating
+        self.media = media
+    }
 }
 
 public struct QueuedMessageItem: Codable, Identifiable, Equatable {

@@ -81,6 +81,75 @@ public struct PendingMediaAttachment: Identifiable, Equatable {
     }
 }
 
+/// 对话媒体图片双层缓存（内存 NSCache + 本地磁盘 Caches，零闪烁秒开缩略图与大图）
+public final class ChatMediaImageCache {
+    public static let shared = ChatMediaImageCache()
+
+    private let memoryCache: NSCache<NSString, UIImage> = {
+        let c = NSCache<NSString, UIImage>()
+        c.countLimit = 180
+        return c
+    }()
+
+    private let diskFolderURL: URL = {
+        let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        let dir = base.appendingPathComponent("AGYMediaCache", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }()
+
+    private init() {}
+
+    private func diskFileURL(forKey key: String) -> URL {
+        let safe = key.unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? String($0) : "_" }.joined()
+        let suffix = String(safe.suffix(96))
+        let hash = UInt64(bitPattern: Int64(key.hashValue))
+        return diskFolderURL.appendingPathComponent("\(hash)_\(suffix).jpg")
+    }
+
+    public func image(forKey key: String) -> UIImage? {
+        guard !key.isEmpty else { return nil }
+        if let mem = memoryCache.object(forKey: key as NSString) {
+            return mem
+        }
+        let fileURL = diskFileURL(forKey: key)
+        if let data = try? Data(contentsOf: fileURL), let img = UIImage(data: data) {
+            memoryCache.setObject(img, forKey: key as NSString)
+            return img
+        }
+        return nil
+    }
+
+    public func store(image: UIImage, rawData: Data? = nil, forKey key: String) {
+        guard !key.isEmpty else { return }
+        memoryCache.setObject(image, forKey: key as NSString)
+        let fileURL = diskFileURL(forKey: key)
+        DispatchQueue.global(qos: .utility).async {
+            if let data = rawData ?? image.jpegData(compressionQuality: 0.88) {
+                try? data.write(to: fileURL, options: .atomic)
+            }
+        }
+    }
+
+    public func cachedImage(for item: ChatMediaItem) -> UIImage? {
+        if let img = image(forKey: item.id) { return img }
+        if let url = item.url, let img = image(forKey: url) { return img }
+        if let name = item.fileName, let img = image(forKey: name) { return img }
+        return nil
+    }
+
+    public func store(image: UIImage, rawData: Data? = nil, for item: ChatMediaItem) {
+        store(image: image, rawData: rawData, forKey: item.id)
+        if let url = item.url, !url.isEmpty {
+            store(image: image, rawData: rawData, forKey: url)
+        }
+        if let name = item.fileName, !name.isEmpty {
+            store(image: image, rawData: rawData, forKey: name)
+        }
+    }
+}
+
 @MainActor
 public final class AntigravityClient: ObservableObject {
 
@@ -1593,14 +1662,19 @@ public final class AntigravityClient: ObservableObject {
 
         // 清理已经被服务端落盘或已进入排队队列的乐观消息，未落盘的继续保留在末尾，彻底消除闪烁
         if !pendingOptimisticMessages.isEmpty {
+            let newServerUserMsgs = serverMsgs.filter {
+                $0.role == "user" && (($0.stepIndex ?? Int.max) >= optimisticBaselineStepIndex || $0.id.hasPrefix("pending-dispatch-"))
+            }
             let newServerUserTexts = Set(
-                serverMsgs
-                    .filter { $0.role == "user" && (($0.stepIndex ?? Int.max) >= optimisticBaselineStepIndex || $0.id.hasPrefix("pending-dispatch-")) }
-                    .compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                newServerUserMsgs.compactMap { $0.text?.trimmingCharacters(in: .whitespacesAndNewlines) }
             )
+            let hasNewServerMediaUserMsg = newServerUserMsgs.contains { !($0.media ?? []).isEmpty }
             let queuedTexts = Set(serverQueued.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) })
             pendingOptimisticMessages.removeAll { opt in
-                guard let t = opt.text?.trimmingCharacters(in: .whitespacesAndNewlines) else { return true }
+                let t = (opt.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if t.isEmpty {
+                    return hasNewServerMediaUserMsg || !newServerUserMsgs.isEmpty || !serverQueued.isEmpty
+                }
                 return newServerUserTexts.contains(t) || queuedTexts.contains(t)
             }
         }
@@ -1718,31 +1792,74 @@ public final class AntigravityClient: ObservableObject {
         if artifacts != newArtifacts { artifacts = newArtifacts }
     }
 
+    private func buildLocalMediaItems(from attachments: [PendingMediaAttachment]) -> [ChatMediaItem] {
+        attachments.map { att in
+            let decodedData = Data(base64Encoded: att.base64Data)
+            if let data = decodedData, let fullImg = UIImage(data: data) {
+                ChatMediaImageCache.shared.store(image: fullImg, rawData: data, forKey: att.id)
+                ChatMediaImageCache.shared.store(image: fullImg, rawData: data, forKey: att.fileName)
+            } else if let thumb = att.thumbnailImage {
+                ChatMediaImageCache.shared.store(image: thumb, forKey: att.id)
+                ChatMediaImageCache.shared.store(image: thumb, forKey: att.fileName)
+            }
+            return ChatMediaItem(
+                id: att.id,
+                mimeType: att.mimeType,
+                fileName: att.fileName,
+                isVideo: att.isVideo,
+                url: nil
+            )
+        }
+    }
+
+    public func loadMediaImage(for item: ChatMediaItem) async -> UIImage? {
+        if let cached = ChatMediaImageCache.shared.cachedImage(for: item) {
+            return cached
+        }
+        guard !isDemoMode, let rawPath = item.url, !rawPath.isEmpty else {
+            return nil
+        }
+        do {
+            let baseURL = try await resolveBestBaseURL(forceProbe: false)
+            guard let url = URL(string: rawPath, relativeTo: baseURL) else { return nil }
+            var req = URLRequest(url: url)
+            req.httpMethod = "GET"
+            req.timeoutInterval = 12.0
+            if !accessToken.isEmpty {
+                req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+            }
+            let (data, resp) = try await fastSession.data(for: req)
+            if let http = resp as? HTTPURLResponse, (200...299).contains(http.statusCode),
+               let img = UIImage(data: data) {
+                ChatMediaImageCache.shared.store(image: img, rawData: data, for: item)
+                return img
+            }
+        } catch {
+            // 忽略单次图片加载瞬时网络异常
+        }
+        return nil
+    }
+
     public func sendMessage(text: String, attachments: [PendingMediaAttachment] = []) async {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !attachments.isEmpty else { return }
 
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let localMediaItems = buildLocalMediaItems(from: attachments)
 
         if isDemoMode {
-            let badgeLine = attachments.map { att in
-                att.isVideo ? "🎬 [视频: \(att.fileName)]" : "🖼️ [图片: \(att.fileName)]"
-            }.joined(separator: "  ")
-            let displayUserText: String = {
-                if attachments.isEmpty { return trimmed }
-                return trimmed.isEmpty ? badgeLine : "\(badgeLine)\n\(trimmed)"
-            }()
             let userMsg = ChatMessageItem(
                 id: "demo-user-\(UUID().uuidString)",
                 stepIndex: messages.count,
                 role: "user",
                 thinking: nil,
-                text: displayUserText,
+                text: trimmed,
                 toolName: nil,
                 summary: nil,
                 model: selectedModelId,
                 status: "CORTEX_STEP_STATUS_DONE",
-                isGenerating: false
+                isGenerating: false,
+                media: localMediaItems.isEmpty ? nil : localMediaItems
             )
             messages.append(userMsg)
             isGenerating = true
@@ -1817,18 +1934,11 @@ public final class AntigravityClient: ObservableObject {
         let targetCascadeId = currentCascadeId
         let shouldQueueOptimistically = queueMessagesWhenBusy && (isGenerating || !queuedMessages.isEmpty)
 
-        let badgeLine = attachments.map { att in
-            att.isVideo ? "🎬 [视频: \(att.fileName)]" : "🖼️ [图片: \(att.fileName)]"
-        }.joined(separator: "  ")
-        let displayUserText: String = {
-            if attachments.isEmpty { return trimmed }
-            return trimmed.isEmpty ? badgeLine : "\(badgeLine)\n\(trimmed)"
-        }()
-
         if shouldQueueOptimistically {
+            let queueDisplay = trimmed.isEmpty ? "[已附带 \(attachments.count) 个媒体附件]" : trimmed
             let optQueued = QueuedMessageItem(
                 id: "opt-q-\(UUID().uuidString)",
-                text: displayUserText,
+                text: queueDisplay,
                 model: selectedModelId.isEmpty ? nil : selectedModelId
             )
             queuedMessages.append(optQueued)
@@ -1840,12 +1950,13 @@ public final class AntigravityClient: ObservableObject {
                 stepIndex: nil,
                 role: "user",
                 thinking: nil,
-                text: displayUserText,
+                text: trimmed,
                 toolName: nil,
                 summary: nil,
                 model: nil,
                 status: "CORTEX_STEP_STATUS_DONE",
-                isGenerating: false
+                isGenerating: false,
+                media: localMediaItems.isEmpty ? nil : localMediaItems
             )
             pendingOptimisticMessages.append(optimistic)
             messages.append(optimistic)
@@ -1879,7 +1990,7 @@ public final class AntigravityClient: ObservableObject {
                 queuedMessages = qList
             }
             if res.queued == true {
-                pendingOptimisticMessages.removeAll { $0.text == displayUserText }
+                pendingOptimisticMessages.removeAll { $0.text == trimmed }
             }
         }
 
